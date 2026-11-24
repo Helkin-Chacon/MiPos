@@ -124,26 +124,26 @@ Example:
 
     {
       "type": "about:blank",
-      "title": "Cash register session is already open",
+      "title": "Caja abierta",
       "status": 409,
-      "detail": "The cash register already has an active session.",
+      "detail": "La caja ya tiene una sesión activa.",
       "instance": "/api/v1/cash-register-sessions/open",
-      "code": "CASH_REGISTER_SESSION_ALREADY_OPEN",
       "traceId": "00-ab123456..."
     }
 
 Error guidelines:
 
 - Use centralized exception handling.
-- Include stable machine-readable error codes for
-  relevant business errors.
-- Include validation errors when applicable.
+- Use `title` and `detail` for a short title and a safe user-facing
+  message in Spanish.
+- Preserve ASP.NET Core's automatic HTTP 400 validation responses
+  with field errors in `ValidationProblemDetails`.
 - Include a trace identifier for troubleshooting.
 - Never expose stack traces, SQL statements, credentials,
   or sensitive internal information.
 
-The frontend must use error codes rather than matching
-human-readable error messages.
+The frontend uses the HTTP status for programmatic handling and displays
+the title and detail to the user.
 
 ## 8. Validation
 
