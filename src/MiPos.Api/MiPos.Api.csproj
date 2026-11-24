@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>MiPos.Api-85a1ab0c-677e-4b58-9e91-e444b04ecdf0</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
