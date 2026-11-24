@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MiPos.Api.Errors;
 using MiPos.Application.Common.Interfaces;
 using MiPos.Infrastructure.Persistence;
 using Scalar.AspNetCore;
@@ -6,7 +9,20 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddProblemDetails();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        context.ProblemDetails.Instance ??= $"{context.HttpContext.Request.PathBase}{context.HttpContext.Request.Path}";
+        context.ProblemDetails.Extensions.TryAdd("traceId",
+            Activity.Current?.Id ?? context.HttpContext.TraceIdentifier);
+        if (context.ProblemDetails is ValidationProblemDetails { Status: StatusCodes.Status400BadRequest })
+        {
+            context.ProblemDetails.Title = "La solicitud contiene errores de validación.";
+        }
+    };
+});
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<IMiPosDbContext, MiPosDbContext>(options =>
 {
