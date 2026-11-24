@@ -1,0 +1,944 @@
+// Mi POS - master model v1.5 (initial model for .NET API, PostgreSQL)
+// Base: general POS shared by the user, with restaurant functionality extensions.
+// The generic outbox and technical idempotency keys are excluded from this conceptual version.
+// The idempotency and retry protection strategy will be defined when implementing the API;
+// it may require additional persistence. Business integrity constraints are retained.
+// Pending DDL: CHECKs, FK indexes, deletion policy, partial uniqueness for open cash register sessions,
+// open orders per table and default price lists; amount and branch integrity.
+// An order can generate a normal sale. Payment and closure are coordinated in a transaction.
+// Inventory retains balances and movements; deduction timing, recipes and reservations are to be defined.
+// Closing totals by payment method are queried from payments; do not duplicate charges in cash register movements.
+// Fiscal data and credit notes are in fiscal_documents; validate Factus/DIAN rules separately.
+// Local authentication and secrets will be defined when implementing identity, as in the original model.
+// Bidirectional synchronization and a SaaS platform are not implemented in this version.
+
+// ---- Typologies ----
+// Global catalog: groups and codes defined and seeded by Mi POS.
+// Do not change group/code or delete referenced values; use is_active to retire options.
+// A simple FK ensures existence, not group membership: validate the group in the API;
+// PostgreSQL group constraints are pending final DDL.
+// Initial values (group: codes):
+// OPERATION_MODE: CASH_REGISTER_ONLY, CASH_REGISTER_AND_WAITERS
+// DEVICE_TYPE: CASH_REGISTER, WAITER, KITCHEN, ADMIN, SERVER
+// IDENTIFICATION_TYPE: CC, CE, NIT, PASSPORT (initial, non-exhaustive catalog)
+// PRODUCT_TYPE: PRODUCT, SERVICE, COMBO
+// UNIT_OF_MEASURE: UNIT, KG, GR, LITER, ML, HOUR
+// ORDER_TYPE: DINE_IN, TAKEAWAY, DELIVERY
+// CASH_REGISTER_MOVEMENT_TYPE: MANUAL_INCOME, WITHDRAWAL, EXPENSE, POSITIVE_ADJUSTMENT, NEGATIVE_ADJUSTMENT
+// INVENTORY_MOVEMENT_TYPE: INBOUND, OUTBOUND, ADJUSTMENT, SALE, RETURN, TRANSFER
+// PRINTER_CONNECTION_TYPE: NETWORK, SYSTEM_QUEUE
+// PRINT_DOCUMENT_TYPE: SALES_RECEIPT, KITCHEN_TICKET
+
+Table typologies {
+  id uuid [pk]
+  group_code varchar [not null]
+  code varchar [not null]
+  name varchar [not null]
+  description varchar
+  sort_order integer [not null, default: 0]
+  is_active boolean [not null, default: true]
+
+  indexes {
+    (group_code, code) [unique]
+  }
+
+  Note: 'Global catalogs of controlled values. Do not manage groups or create arbitrary values from the POS.'
+}
+
+// ---- Organization ----
+
+Table businesses {
+  id uuid [pk]
+  code varchar [not null, unique]
+  name varchar [not null]
+  legal_name varchar
+  tax_identification varchar
+  country_code char(2) [not null]
+  currency_code char(3) [not null]
+  time_zone varchar [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1, note: 'Optimistic concurrency; the API increments this value']
+}
+
+Table branches {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  address varchar
+  phone varchar
+  operation_mode_id uuid [not null, note: 'OPERATION_MODE; the API assigns CASH_REGISTER_ONLY by default']
+  uses_tables boolean [not null, default: false]
+  inventory_enabled boolean [not null, default: false]
+  time_zone varchar [note: 'If empty, inherits the business time zone']
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+}
+
+Table cash_registers {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  receipt_prefix varchar
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, branch_id, code) [unique]
+  }
+}
+
+Table devices {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  cash_register_id uuid [note: 'Optional: phones, kitchen or administration devices are not cash registers']
+  code varchar [not null]
+  name varchar [not null]
+  device_type_id uuid [not null, note: 'DEVICE_TYPE']
+  last_activity_at timestamptz
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+}
+
+// ---- Security ----
+// One role per user; permissions configurable by role.
+// Business-level access; no individual branch assignments.
+
+Table roles {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null, note: 'E.g. ADMINISTRATOR, SUPERVISOR or CASHIER']
+  name varchar [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+}
+
+Table users {
+  id uuid [pk]
+  business_id uuid [not null]
+  role_id uuid [not null]
+  username varchar [not null]
+  normalized_username varchar [not null]
+  name varchar [not null]
+  email varchar
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1, note: 'Password hashes and secrets are stored outside this profile']
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, normalized_username) [unique]
+  }
+}
+
+Table permissions {
+  id uuid [pk]
+  code varchar [not null, unique]
+  name varchar [not null]
+  description varchar
+}
+
+Table role_permissions {
+  business_id uuid [not null]
+  role_id uuid [not null]
+  permission_id uuid [not null]
+
+  indexes {
+    (business_id, role_id, permission_id) [pk]
+  }
+}
+
+// ---- Catalog and customers ----
+
+Table customers {
+  id uuid [pk]
+  business_id uuid [not null]
+  document_type_id uuid [note: 'IDENTIFICATION_TYPE']
+  document_number varchar
+  display_name varchar [not null]
+  legal_name varchar
+  email varchar
+  phone varchar
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, document_type_id, document_number) [unique]
+  }
+}
+
+Table categories {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  description varchar
+  image_path varchar
+  sort_order integer [not null, default: 0]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+}
+
+Table products {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null]
+  sku varchar
+  barcode varchar
+  category_id uuid [note: 'Optional for non-sellable supplies']
+  product_type_id uuid [not null, note: 'PRODUCT_TYPE']
+  name varchar [not null]
+  description varchar
+  image_path varchar [note: 'Local resource backed up with the database']
+  unit_of_measure_id uuid [not null, note: 'UNIT_OF_MEASURE']
+  tracks_inventory boolean [not null, default: false]
+  is_sellable boolean [not null, default: true]
+  tax_code varchar
+  tax_rate decimal(7,4) [note: 'Null: inherits fiscal settings; zero: zero rate']
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+    (business_id, barcode) [unique]
+  }
+}
+
+Table price_lists {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  currency_code char(3) [not null]
+  is_default boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+}
+
+Table product_prices {
+  id uuid [pk]
+  business_id uuid [not null]
+  price_list_id uuid [not null]
+  product_id uuid [not null]
+  price decimal(18,4) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, price_list_id, product_id) [unique]
+  }
+}
+
+Table combo_components {
+  id uuid [pk]
+  business_id uuid [not null]
+  combo_id uuid [not null]
+  product_id uuid [not null]
+  quantity decimal(18,4) [not null]
+  sort_order integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, combo_id, product_id) [unique]
+  }
+
+  Note: 'Fixed composition. The parent is COMBO; children are not combos; separate price in product_prices.'
+}
+
+// ---- Restaurant ----
+
+Table order_types {
+  id uuid [pk]
+  business_id uuid [not null]
+  typology_id uuid [not null, note: 'ORDER_TYPE; enabled status and ordering per business']
+  is_active boolean [not null, default: true]
+  sort_order integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, typology_id) [unique]
+  }
+
+  Note: 'Per-business configuration of global order types. Name and code come from typologies; is_active and sort_order are local.'
+}
+
+Table restaurant_tables {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  capacity integer
+  sort_order integer [not null, default: 0]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, branch_id) [unique]
+    (business_id, branch_id, code) [unique]
+  }
+
+  Note: 'Occupancy is derived from open orders; no duplicate available/occupied status is maintained.'
+}
+
+Table orders {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  restaurant_table_id uuid
+  order_type_id uuid [not null]
+  price_list_id uuid [not null]
+  opened_by_user_id uuid [not null]
+  closed_by_user_id uuid
+  source_device_id uuid
+  customer_id uuid
+  number bigint [not null]
+  status varchar [not null, default: 'OPEN', note: 'OPEN, CLOSED or CANCELED; sending to the kitchen does not close the order']
+  currency_code char(3) [not null]
+  opened_at timestamptz [not null]
+  closed_at timestamptz
+  notes varchar
+  charges_snapshot jsonb [note: 'Selected charges and amounts applied to the order']
+  cancellation_reason varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, branch_id) [unique]
+    (business_id, branch_id, number) [unique]
+  }
+
+  Note: 'One open order per table in the MVP; an order may have no table. No cash register session required until payment.'
+}
+
+Table order_items {
+  id uuid [pk]
+  business_id uuid [not null]
+  order_id uuid [not null]
+  product_id uuid [not null]
+  user_id uuid [not null]
+  line_number integer [not null]
+  item_code varchar [not null]
+  item_name varchar [not null]
+  unit_of_measure_code varchar [not null]
+  quantity decimal(18,4) [not null]
+  unit_price decimal(18,4) [not null]
+  tax_code varchar
+  tax_rate decimal(7,4) [not null, default: 0]
+  line_subtotal decimal(18,2) [not null]
+  line_discount decimal(18,2) [not null, default: 0]
+  line_tax decimal(18,2) [not null, default: 0]
+  line_total decimal(18,2) [not null]
+  is_takeaway boolean [not null, default: false]
+  combo_components_snapshot jsonb [note: 'Composition when the combo is added']
+  status varchar [not null, default: 'ACTIVE', note: 'ACTIVE or CANCELED']
+  notes varchar
+  cancellation_reason varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, order_id) [unique]
+    (business_id, order_id, line_number) [unique]
+  }
+
+  Note: 'Price and composition are frozen when adding the line. Catalog changes do not modify open orders.'
+}
+
+Table additional_charges {
+  id uuid [pk]
+  business_id uuid [not null]
+  code varchar [not null]
+  name varchar [not null]
+  calculation_type varchar [not null, note: 'FIXED or PERCENTAGE']
+  amount decimal(18,4) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, code) [unique]
+  }
+
+  Note: 'Charge configuration; application rules, calculation base and tax treatment pending validation.'
+}
+
+// ---- Sales and payments ----
+
+Table sales {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  order_id uuid [note: 'Null for direct sales or returns']
+  cash_register_session_id uuid [note: 'Optional for channels that do not operate through a cash register']
+  user_id uuid [not null]
+  customer_id uuid [note: 'Null means an anonymous final consumer']
+  source_device_id uuid [not null]
+  original_sale_id uuid [note: 'Original sale for a return or corrective document']
+  type varchar [not null, note: 'SALE or RETURN']
+  series varchar [not null]
+  number bigint [not null]
+  status varchar [not null, note: 'CONFIRMED, VOIDED or RETURNED; commercial status']
+  payment_terms varchar [not null, note: 'IMMEDIATE or CREDIT']
+  due_date date
+  currency_code char(3) [not null]
+  operation_at timestamptz [not null]
+  subtotal decimal(18,2) [not null]
+  total_discount decimal(18,2) [not null, default: 0]
+  total_tax decimal(18,2) [not null, default: 0]
+  total_charges decimal(18,2) [not null, default: 0]
+  charges_snapshot jsonb [note: 'Historical name, rule and amount of applied charges']
+  total decimal(18,2) [not null]
+  notes varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, series, number) [unique]
+    (business_id, order_id) [unique]
+  }
+}
+
+Table sale_items {
+  id uuid [pk]
+  business_id uuid [not null]
+  sale_id uuid [not null]
+  product_id uuid [not null]
+  order_item_id uuid
+  original_sale_item_id uuid [note: 'Original line for a return']
+  is_takeaway boolean [not null, default: false]
+  combo_components_snapshot jsonb [note: 'Historical composition: product, name and quantity']
+  line_number integer [not null]
+  item_code varchar [not null, note: 'Historical copy of the sold item code']
+  item_name varchar [not null, note: 'Historical copy of the sold item name']
+  unit_of_measure_code varchar [not null]
+  tax_code varchar
+  tax_rate decimal(7,4) [not null, default: 0]
+  quantity decimal(18,4) [not null]
+  unit_price decimal(18,4) [not null]
+  line_subtotal decimal(18,2) [not null]
+  line_discount decimal(18,2) [not null, default: 0]
+  line_tax decimal(18,2) [not null, default: 0]
+  line_total decimal(18,2) [not null]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, sale_id, line_number) [unique]
+  }
+}
+
+Table payment_methods {
+  id uuid [pk]
+  code varchar [not null, unique]
+  name varchar [not null]
+  affects_cash_register boolean [not null, default: false, note: 'E.g. cash affects the closing balance; bank transfers normally do not']
+  requires_reference boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+}
+
+Table business_payment_methods {
+  id uuid [pk]
+  business_id uuid [not null]
+  payment_method_id uuid [not null]
+  provider_code varchar
+  provider_config jsonb [note: 'Non-secret configuration; tokens and keys are kept in a secure store']
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, payment_method_id) [unique]
+  }
+}
+
+Table payments {
+  id uuid [pk]
+  business_id uuid [not null]
+  sale_id uuid [not null]
+  business_payment_method_id uuid [not null]
+  user_id uuid [not null]
+  cash_register_session_id uuid [note: 'Required by the API when the method affects the cash register']
+  source_device_id uuid [not null]
+  original_payment_id uuid [note: 'Payment reversed by this record without editing the original']
+  type varchar [not null, note: 'CHARGE or REVERSAL']
+  status varchar [not null, note: 'PENDING, APPROVED or REJECTED; a reversal is another approved record']
+  amount decimal(18,2) [not null]
+  amount_tendered decimal(18,2) [note: 'Cash payments only']
+  change_given decimal(18,2) [note: 'Cash payments only']
+  payment_method_code_snapshot varchar [not null]
+  payment_method_name_snapshot varchar [not null]
+  affects_cash_register_snapshot boolean [not null]
+  currency_code char(3) [not null]
+  card_installments integer [note: 'Card processor installments; not commercial credit installments']
+  external_reference varchar
+  operation_at timestamptz [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+  }
+}
+
+// ---- Cash registers ----
+
+Table cash_register_sessions {
+  id uuid [pk]
+  business_id uuid [not null]
+  cash_register_id uuid [not null]
+  opened_by_user_id uuid [not null]
+  responsible_user_id uuid [not null]
+  closed_by_user_id uuid [note: 'Empty while the session is open']
+  source_device_id uuid
+  status varchar [not null, note: 'OPEN or CLOSED']
+  opened_at timestamptz [not null]
+  closed_at timestamptz
+  opening_amount decimal(18,2) [not null]
+  declared_closing_amount decimal(18,2)
+  expected_closing_amount decimal(18,2)
+  closing_difference decimal(18,2)
+  notes varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+  }
+}
+
+Table cash_register_movements {
+  id uuid [pk]
+  business_id uuid [not null]
+  cash_register_session_id uuid [not null]
+  user_id uuid [not null]
+  source_device_id uuid
+  original_movement_id uuid [note: 'Movement reversed or corrected by this record without editing the original']
+  movement_type_id uuid [not null, note: 'CASH_REGISTER_MOVEMENT_TYPE; the code determines the effect on cash']
+  status varchar [not null, note: 'RECORDED or REVERSED; include original and offsetting movement in the balance']
+  amount decimal(18,2) [not null, note: 'Always positive; the type determines the effect on the cash register']
+  operation_at timestamptz [not null]
+  reason varchar [not null]
+  reference varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+  }
+}
+
+// ---- Inventory ----
+
+Table product_inventory {
+  id uuid [pk]
+  business_id uuid [not null]
+  product_id uuid [not null]
+  branch_id uuid [not null]
+  current_quantity decimal(18,4) [not null, default: 0, note: 'Balance updated transactionally from movements']
+  reserved_quantity decimal(18,4) [not null, default: 0]
+  minimum_quantity decimal(18,4)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, product_id, branch_id) [unique]
+  }
+}
+
+Table inventory_movements {
+  id uuid [pk]
+  business_id uuid [not null]
+  product_inventory_id uuid [not null]
+  user_id uuid [not null]
+  source_device_id uuid
+  sale_item_id uuid
+  original_movement_id uuid [note: 'Movement reversed by this record without editing the original']
+  movement_type_id uuid [not null, note: 'INVENTORY_MOVEMENT_TYPE']
+  quantity_delta decimal(18,4) [not null, note: 'Positive for inbound and negative for outbound']
+  previous_quantity decimal(18,4) [not null]
+  resulting_quantity decimal(18,4) [not null]
+  operation_group_id uuid [note: 'A transfer uses two movements with the same group']
+  operation_at timestamptz [not null]
+  reason varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+  }
+}
+
+// ---- Invoicing ----
+
+Table fiscal_settings {
+  id uuid [pk]
+  business_id uuid [not null]
+  is_enabled boolean [not null, default: false]
+  provider_code varchar [not null, default: 'FACTUS']
+  environment varchar [not null, note: 'TEST or PRODUCTION']
+  credential_reference varchar [note: 'Reference to the secret store; do not store tokens']
+  preferred_document_type varchar [note: 'Subject to the business fiscal obligations']
+  default_tax_code varchar
+  default_tax_rate decimal(7,4)
+  prices_include_tax boolean [not null, default: true]
+  issuer_profile jsonb [note: 'Non-secret fiscal data of the issuer']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, environment) [unique]
+  }
+}
+
+Table fiscal_numbering_ranges {
+  id uuid [pk]
+  business_id uuid [not null]
+  fiscal_setting_id uuid [not null]
+  document_type varchar [not null]
+  provider_range_id varchar [not null]
+  prefix varchar
+  number_from bigint
+  number_to bigint
+  valid_from date
+  valid_until date
+  resolution varchar
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, fiscal_setting_id) [unique]
+    (business_id, fiscal_setting_id, provider_range_id) [unique]
+  }
+
+  Note: 'Cache of authorized numbering; does not assign fiscal numbers on its own.'
+}
+
+Table fiscal_documents {
+  id uuid [pk]
+  business_id uuid [not null]
+  sale_id uuid [not null]
+  fiscal_setting_id uuid [not null]
+  fiscal_numbering_range_id uuid
+  original_document_id uuid [note: 'Document corrected by a credit note']
+  requested_by_user_id uuid
+  document_type varchar [not null, note: 'INVOICE, ELECTRONIC_POS or CREDIT_NOTE; validate support and rules']
+  status varchar [not null, default: 'PENDING', note: 'PENDING, PROCESSING, ISSUED, REJECTED, UNKNOWN or PERMANENT_ERROR']
+  operation_reference varchar [not null, note: 'Stable reference sent to the provider']
+  provider_document_id varchar
+  fiscal_number varchar
+  fiscal_identifier varchar [note: 'CUFE, CUDE or other identifier depending on the document']
+  issuer_data jsonb [not null]
+  buyer_data jsonb [not null]
+  fiscal_content jsonb [not null, note: 'Snapshot of amounts, lines, taxes and required data']
+  correction_reason varchar
+  requested_at timestamptz [not null]
+  issued_at timestamptz
+  next_attempt_at timestamptz
+  attempt_count integer [not null, default: 0]
+  locked_until timestamptz
+  last_error varchar
+  pdf_path varchar
+  xml_path varchar
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, fiscal_setting_id) [unique]
+    (business_id, fiscal_setting_id, operation_reference) [unique]
+    (business_id, fiscal_setting_id, provider_document_id) [unique]
+    (business_id, status, next_attempt_at)
+  }
+
+  Note: 'The sale is independent of its fiscal document. Credit notes are modeled here; they are not a new fiscal sale type.'
+}
+
+// ---- Printing ----
+
+Table printers {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  host_device_id uuid [note: 'Device with physical access to the printer if connected by USB']
+  code varchar [not null]
+  name varchar [not null]
+  connection_type_id uuid [not null, note: 'PRINTER_CONNECTION_TYPE']
+  destination varchar [not null, note: 'Network address or local queue name']
+  paper_width_mm integer
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, branch_id) [unique]
+    (business_id, branch_id, code) [unique]
+  }
+}
+
+Table print_settings {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  printer_id uuid [not null]
+  document_type_id uuid [not null, note: 'PRINT_DOCUMENT_TYPE']
+  is_automatic boolean [not null, default: false]
+  copies integer [not null, default: 1]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (business_id, branch_id, document_type_id, printer_id) [unique]
+  }
+
+  Note: 'Allows different printers for receipts and kitchen, or multiple copies/destinations.'
+}
+
+Table print_jobs {
+  id uuid [pk]
+  business_id uuid [not null]
+  branch_id uuid [not null]
+  printer_id uuid [not null]
+  sale_id uuid
+  order_id uuid
+  requested_by_user_id uuid
+  original_job_id uuid [note: 'Manual reprint of a previous job']
+  document_type_id uuid [not null, note: 'PRINT_DOCUMENT_TYPE']
+  content_snapshot jsonb [not null]
+  copies integer [not null, default: 1]
+  status varchar [not null, default: 'PENDING', note: 'PENDING, PROCESSING, SENT, UNCERTAIN, ERROR or CANCELED']
+  attempt_count integer [not null, default: 0]
+  next_attempt_at timestamptz
+  locked_until timestamptz
+  last_error varchar
+  sent_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  version bigint [not null, default: 1]
+
+  indexes {
+    (id, business_id) [unique]
+    (id, business_id, branch_id) [unique]
+    (business_id, status, next_attempt_at)
+  }
+
+  Note: 'Exactly one of sale_id/order_id. SENT does not guarantee physical output. Do not automatically duplicate a job after an uncertain result.'
+}
+
+// ---- Relationships ----
+Ref fk_branches_business_id: businesses.id < branches.business_id
+Ref fk_cash_registers_business_id: businesses.id < cash_registers.business_id
+Ref fk_devices_business_id: businesses.id < devices.business_id
+Ref fk_cash_register_sessions_business_id: businesses.id < cash_register_sessions.business_id
+Ref fk_cash_register_movements_business_id: businesses.id < cash_register_movements.business_id
+Ref fk_roles_business_id: businesses.id < roles.business_id
+Ref fk_users_business_id: businesses.id < users.business_id
+Ref fk_users_role_id: roles.(id, business_id) < users.(role_id, business_id)
+Ref fk_customers_business_id: businesses.id < customers.business_id
+Ref fk_products_business_id: businesses.id < products.business_id
+Ref fk_price_lists_business_id: businesses.id < price_lists.business_id
+Ref fk_product_prices_business_id: businesses.id < product_prices.business_id
+Ref fk_product_inventory_business_id: businesses.id < product_inventory.business_id
+Ref fk_inventory_movements_business_id: businesses.id < inventory_movements.business_id
+Ref fk_sales_business_id: businesses.id < sales.business_id
+Ref fk_sale_items_business_id: businesses.id < sale_items.business_id
+Ref fk_business_payment_methods_business_id: businesses.id < business_payment_methods.business_id
+Ref fk_payments_business_id: businesses.id < payments.business_id
+Ref fk_cash_registers_branch_id: branches.(id, business_id) < cash_registers.(branch_id, business_id)
+Ref fk_devices_branch_id: branches.(id, business_id) < devices.(branch_id, business_id)
+Ref fk_devices_cash_register_id: cash_registers.(id, business_id) < devices.(cash_register_id, business_id)
+Ref fk_cash_register_sessions_cash_register_id: cash_registers.(id, business_id) < cash_register_sessions.(cash_register_id, business_id)
+Ref fk_cash_register_sessions_source_device_id: devices.(id, business_id) < cash_register_sessions.(source_device_id, business_id)
+Ref fk_cash_register_sessions_opened_by_user_id: users.(id, business_id) < cash_register_sessions.(opened_by_user_id, business_id)
+Ref fk_cash_register_sessions_responsible_user_id: users.(id, business_id) < cash_register_sessions.(responsible_user_id, business_id)
+Ref fk_cash_register_sessions_closed_by_user_id: users.(id, business_id) < cash_register_sessions.(closed_by_user_id, business_id)
+Ref fk_cash_register_movements_cash_register_session_id: cash_register_sessions.(id, business_id) < cash_register_movements.(cash_register_session_id, business_id)
+Ref fk_cash_register_movements_user_id: users.(id, business_id) < cash_register_movements.(user_id, business_id)
+Ref fk_cash_register_movements_source_device_id: devices.(id, business_id) < cash_register_movements.(source_device_id, business_id)
+Ref fk_cash_register_movements_original_movement_id: cash_register_movements.(id, business_id) < cash_register_movements.(original_movement_id, business_id)
+Ref fk_product_prices_price_list_id: price_lists.(id, business_id) < product_prices.(price_list_id, business_id)
+Ref fk_product_prices_product_id: products.(id, business_id) < product_prices.(product_id, business_id)
+Ref fk_product_inventory_product_id: products.(id, business_id) < product_inventory.(product_id, business_id)
+Ref fk_product_inventory_branch_id: branches.(id, business_id) < product_inventory.(branch_id, business_id)
+Ref fk_inventory_movements_product_inventory_id: product_inventory.(id, business_id) < inventory_movements.(product_inventory_id, business_id)
+Ref fk_inventory_movements_user_id: users.(id, business_id) < inventory_movements.(user_id, business_id)
+Ref fk_inventory_movements_source_device_id: devices.(id, business_id) < inventory_movements.(source_device_id, business_id)
+Ref fk_inventory_movements_sale_item_id: sale_items.(id, business_id) < inventory_movements.(sale_item_id, business_id)
+Ref fk_inventory_movements_original_movement_id: inventory_movements.(id, business_id) < inventory_movements.(original_movement_id, business_id)
+Ref fk_sales_branch_id: branches.(id, business_id) < sales.(branch_id, business_id)
+Ref fk_sales_cash_register_session_id: cash_register_sessions.(id, business_id) < sales.(cash_register_session_id, business_id)
+Ref fk_sales_user_id: users.(id, business_id) < sales.(user_id, business_id)
+Ref fk_sales_customer_id: customers.(id, business_id) < sales.(customer_id, business_id)
+Ref fk_sales_source_device_id: devices.(id, business_id) < sales.(source_device_id, business_id)
+Ref fk_sales_original_sale_id: sales.(id, business_id) < sales.(original_sale_id, business_id)
+Ref fk_sale_items_sale_id: sales.(id, business_id) < sale_items.(sale_id, business_id)
+Ref fk_sale_items_product_id: products.(id, business_id) < sale_items.(product_id, business_id)
+Ref fk_business_payment_methods_payment_method_id: payment_methods.id < business_payment_methods.payment_method_id
+Ref fk_payments_sale_id: sales.(id, business_id) < payments.(sale_id, business_id)
+Ref fk_payments_business_payment_method_id: business_payment_methods.(id, business_id) < payments.(business_payment_method_id, business_id)
+Ref fk_payments_user_id: users.(id, business_id) < payments.(user_id, business_id)
+Ref fk_payments_cash_register_session_id: cash_register_sessions.(id, business_id) < payments.(cash_register_session_id, business_id)
+Ref fk_payments_source_device_id: devices.(id, business_id) < payments.(source_device_id, business_id)
+Ref fk_payments_original_payment_id: payments.(id, business_id) < payments.(original_payment_id, business_id)
+Ref fk_role_permissions_business_id: businesses.id < role_permissions.business_id
+Ref fk_categories_business_id: businesses.id < categories.business_id
+Ref fk_combo_components_business_id: businesses.id < combo_components.business_id
+Ref fk_order_types_business_id: businesses.id < order_types.business_id
+Ref fk_restaurant_tables_business_id: businesses.id < restaurant_tables.business_id
+Ref fk_orders_business_id: businesses.id < orders.business_id
+Ref fk_order_items_business_id: businesses.id < order_items.business_id
+Ref fk_additional_charges_business_id: businesses.id < additional_charges.business_id
+Ref fk_fiscal_settings_business_id: businesses.id < fiscal_settings.business_id
+Ref fk_fiscal_numbering_ranges_business_id: businesses.id < fiscal_numbering_ranges.business_id
+Ref fk_fiscal_documents_business_id: businesses.id < fiscal_documents.business_id
+Ref fk_printers_business_id: businesses.id < printers.business_id
+Ref fk_print_settings_business_id: businesses.id < print_settings.business_id
+Ref fk_print_jobs_business_id: businesses.id < print_jobs.business_id
+Ref fk_role_permissions_role_id: roles.(id, business_id) < role_permissions.(role_id, business_id)
+Ref fk_products_category_id: categories.(id, business_id) < products.(category_id, business_id)
+Ref fk_combo_components_combo_id: products.(id, business_id) < combo_components.(combo_id, business_id)
+Ref fk_combo_components_product_id: products.(id, business_id) < combo_components.(product_id, business_id)
+Ref fk_restaurant_tables_branch_id: branches.(id, business_id) < restaurant_tables.(branch_id, business_id)
+Ref fk_orders_branch_id: branches.(id, business_id) < orders.(branch_id, business_id)
+Ref fk_orders_restaurant_table_id: restaurant_tables.(id, business_id, branch_id) < orders.(restaurant_table_id, business_id, branch_id)
+Ref fk_orders_order_type_id: order_types.(id, business_id) < orders.(order_type_id, business_id)
+Ref fk_orders_price_list_id: price_lists.(id, business_id) < orders.(price_list_id, business_id)
+Ref fk_orders_opened_by_user_id: users.(id, business_id) < orders.(opened_by_user_id, business_id)
+Ref fk_orders_closed_by_user_id: users.(id, business_id) < orders.(closed_by_user_id, business_id)
+Ref fk_orders_source_device_id: devices.(id, business_id) < orders.(source_device_id, business_id)
+Ref fk_orders_customer_id: customers.(id, business_id) < orders.(customer_id, business_id)
+Ref fk_order_items_order_id: orders.(id, business_id) < order_items.(order_id, business_id)
+Ref fk_order_items_product_id: products.(id, business_id) < order_items.(product_id, business_id)
+Ref fk_order_items_user_id: users.(id, business_id) < order_items.(user_id, business_id)
+Ref fk_sales_order_id: orders.(id, business_id, branch_id) < sales.(order_id, business_id, branch_id)
+Ref fk_sale_items_order_item_id: order_items.(id, business_id) < sale_items.(order_item_id, business_id)
+Ref fk_sale_items_original_sale_item_id: sale_items.(id, business_id) < sale_items.(original_sale_item_id, business_id)
+Ref fk_fiscal_numbering_ranges_fiscal_setting_id: fiscal_settings.(id, business_id) < fiscal_numbering_ranges.(fiscal_setting_id, business_id)
+Ref fk_fiscal_documents_sale_id: sales.(id, business_id) < fiscal_documents.(sale_id, business_id)
+Ref fk_fiscal_documents_fiscal_setting_id: fiscal_settings.(id, business_id) < fiscal_documents.(fiscal_setting_id, business_id)
+Ref fk_fiscal_documents_fiscal_numbering_range_id: fiscal_numbering_ranges.(id, business_id) < fiscal_documents.(fiscal_numbering_range_id, business_id)
+Ref fk_fiscal_documents_original_document_id: fiscal_documents.(id, business_id) < fiscal_documents.(original_document_id, business_id)
+Ref fk_fiscal_documents_requested_by_user_id: users.(id, business_id) < fiscal_documents.(requested_by_user_id, business_id)
+Ref fk_printers_branch_id: branches.(id, business_id) < printers.(branch_id, business_id)
+Ref fk_printers_host_device_id: devices.(id, business_id) < printers.(host_device_id, business_id)
+Ref fk_print_settings_branch_id: branches.(id, business_id) < print_settings.(branch_id, business_id)
+Ref fk_print_settings_printer_id: printers.(id, business_id, branch_id) < print_settings.(printer_id, business_id, branch_id)
+Ref fk_print_jobs_branch_id: branches.(id, business_id) < print_jobs.(branch_id, business_id)
+Ref fk_print_jobs_printer_id: printers.(id, business_id, branch_id) < print_jobs.(printer_id, business_id, branch_id)
+Ref fk_print_jobs_sale_id: sales.(id, business_id) < print_jobs.(sale_id, business_id)
+Ref fk_print_jobs_order_id: orders.(id, business_id, branch_id) < print_jobs.(order_id, business_id, branch_id)
+Ref fk_print_jobs_requested_by_user_id: users.(id, business_id) < print_jobs.(requested_by_user_id, business_id)
+Ref fk_print_jobs_original_job_id: print_jobs.(id, business_id) < print_jobs.(original_job_id, business_id)
+Ref fk_role_permissions_permission_id: permissions.id < role_permissions.permission_id
+
+// ---- Typology relationships ----
+Ref fk_branches_operation_mode_id: typologies.id < branches.operation_mode_id
+Ref fk_devices_device_type_id: typologies.id < devices.device_type_id
+Ref fk_customers_document_type_id: typologies.id < customers.document_type_id
+Ref fk_products_product_type_id: typologies.id < products.product_type_id
+Ref fk_products_unit_of_measure_id: typologies.id < products.unit_of_measure_id
+Ref fk_order_types_typology_id: typologies.id < order_types.typology_id
+Ref fk_cash_register_movements_movement_type_id: typologies.id < cash_register_movements.movement_type_id
+Ref fk_inventory_movements_movement_type_id: typologies.id < inventory_movements.movement_type_id
+Ref fk_printers_connection_type_id: typologies.id < printers.connection_type_id
+Ref fk_print_settings_document_type_id: typologies.id < print_settings.document_type_id
+Ref fk_print_jobs_document_type_id: typologies.id < print_jobs.document_type_id

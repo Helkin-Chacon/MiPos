@@ -1,0 +1,29 @@
+# .NET build and test output
+[Bb]in/
+[Oo]bj/
+artifacts/
+TestResults/
+*.trx
+
+# IDE and user-specific settings
+.idea/
+*.sln.iml
+*.DotSettings.user
+.vs/
+*.user
+*.suo
+
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.p12

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MiPos.Api/MiPos.Api.csproj" />
+    <Project Path="src/MiPos.Application/MiPos.Application.csproj" />
+    <Project Path="src/MiPos.Domain/MiPos.Domain.csproj" />
+    <Project Path="src/MiPos.Infrastructure/MiPos.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MiPos.IntegrationTests/MiPos.IntegrationTests.csproj" />
+    <Project Path="tests/MiPos.UnitTests/MiPos.UnitTests.csproj" />
+  </Folder>
+</Solution>
