@@ -35,11 +35,10 @@ The solution is organized into:
 - MiPos.UnitTests
 - MiPos.IntegrationTests
 
-Organize application code by business modules and features.
-
 Keep business rules independent of external services and infrastructure.
 
-Follow the architecture defined in docs/architecture.md.
+Follow docs/architecture.md for architecture, feature structure, and folder conventions.
+Group domain entities by business module under `MiPos.Domain/Entities`.
 
 ## Deployment Strategy
 
@@ -101,6 +100,8 @@ before making significant changes.
 - Use decimal for monetary amounts, never float or double.
 - Store timestamps in UTC.
 - Keep database constraints consistent with business rules.
+- Treat typology and group IDs as permanent integers. Keep them aligned with frontend enums and never reuse them.
+- Validate typology references against the expected group.
 
 The DBML is the initial database reference.
 
@@ -108,11 +109,11 @@ Do not introduce schema changes without explaining their purpose.
 
 ## API Standards
 
-- Use ASP.NET Core Controllers.
+- Use ASP.NET Core Controllers and follow the controller conventions in docs/api-conventions.md.
 - Follow REST conventions.
 - Use /api/v1/ for API versioning.
 - Use appropriate HTTP status codes.
-- Use ProblemDetails for error responses.
+- Use ApiResponse<T> for business JSON responses and ApiError for error details.
 - Implement centralized exception handling.
 - Validate incoming requests.
 - Never expose sensitive internal information in API responses.

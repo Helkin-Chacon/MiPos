@@ -73,12 +73,11 @@ Responsibilities:
 - External service abstractions
 - Transaction orchestration
 
-Organize features by business module.
+Expose each application service through an interface. Consumers depend on
+that interface. Services may use `IMiPosDbContext` directly. Register services
+that depend on a DbContext as scoped with `AddScoped`.
 
-Application services may use IMiPosDbContext directly.
-
-Do not introduce a handler, interface, or validator for every
-operation unless it provides meaningful value.
+Add handlers or validators when they provide meaningful value.
 
 ### MiPos.Domain
 
@@ -154,7 +153,9 @@ for each module unless explicitly required.
 
 ## 6. Feature Organization
 
-Organize application functionality by business module.
+Organize Application by feature and group files within each feature by
+responsibility. Use `Interfaces`, `Services`, `Requests`, `Responses`,
+and `Models` where needed. Create folders when they have files.
 
 Example:
 
@@ -162,16 +163,17 @@ Example:
     ├── Common/
     │   ├── Interfaces/
     │   └── Exceptions/
-    └── Catalog/
-        └── Products/
-            ├── ProductService.cs
-            ├── Models/
-            └── Validators/
+    └── Typologies/
+        ├── Interfaces/
+        │   └── ITypologyService.cs
+        ├── Services/
+        │   └── TypologyService.cs
+        └── Responses/
+            └── TypologyResponse.cs
 
-Use feature-specific folders when their size or complexity
-justifies them.
-
-Avoid excessive folder nesting and unnecessary abstractions.
+Group domain entities by business module under `MiPos.Domain/Entities`,
+for example `MiPos.Domain/Entities/Typologies/Typology.cs`. Create each
+module folder when it has an entity.
 
 ## 7. Persistence
 
@@ -223,7 +225,7 @@ The model provides the reference for:
 
 Database conventions:
 
-- UUID identifiers
+- UUID identifiers for business entities. The global typology catalog uses explicit integer IDs.
 - English naming
 - snake_case tables and columns
 - Plural table names following the DBML
@@ -263,11 +265,15 @@ one branch can exist permanently.
 
 Typologies provide a centralized catalog for shared classifications.
 
-Typology groups and system codes are controlled by the application.
+Typology group IDs, typology IDs and technical codes are controlled by
+the application. Assign integer IDs explicitly in the domain enums and
+keep the same numeric values in the frontend enums. Typology IDs are
+unique across groups. These IDs are permanent and must never be
+reassigned or reused, including when a value is retired.
 
-Initial values must be populated through controlled seed processes.
-
-Validate that referenced typologies belong to the expected group.
+Manage the initial catalog with EF Core model seed data. Validate that
+each referenced typology belongs to the expected group. A foreign key
+guarantees that the typology exists; the application checks membership.
 
 Operational states and critical business transitions must remain
 controlled by application rules.

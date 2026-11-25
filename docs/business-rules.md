@@ -124,7 +124,8 @@ Initial groups include:
 - PRINTER_CONNECTION_TYPE
 - PRINT_DOCUMENT_TYPE
 
-Groups and codes are controlled by MiPos.
+Groups, typology IDs, and codes are controlled by MiPos. Group and typology
+IDs are permanent and must never be reused.
 
 Users must not create arbitrary system typologies.
 
