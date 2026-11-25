@@ -13,8 +13,10 @@
 // Bidirectional synchronization and a SaaS platform are not implemented in this version.
 
 // ---- Typologies ----
-// Global catalog: groups and codes defined and seeded by Mi POS.
-// Do not change group/code or delete referenced values; use is_active to retire options.
+// Global catalog: group IDs, typology IDs and codes are defined and seeded by Mi POS.
+// Group IDs are 1–10 in the order below. Typology IDs are globally 1–38 in the order listed.
+// IDs are permanent, must match frontend enums, and must never be reassigned or reused.
+// Preserve group IDs and codes; use is_active to retire options.
 // A simple FK ensures existence, not group membership: validate the group in the API;
 // PostgreSQL group constraints are pending final DDL.
 // Initial values (group: codes):
@@ -30,8 +32,8 @@
 // PRINT_DOCUMENT_TYPE: SALES_RECEIPT, KITCHEN_TICKET
 
 Table typologies {
-  id uuid [pk]
-  group_code varchar [not null]
+  id integer [pk, note: 'Permanent global ID, assigned explicitly']
+  group_id integer [not null, note: 'Permanent TypologyGroup enum value']
   code varchar [not null]
   name varchar [not null]
   description varchar
@@ -39,7 +41,7 @@ Table typologies {
   is_active boolean [not null, default: true]
 
   indexes {
-    (group_code, code) [unique]
+    (group_id, code) [unique]
   }
 
   Note: 'Global catalogs of controlled values. Do not manage groups or create arbitrary values from the POS.'
@@ -70,7 +72,7 @@ Table branches {
   name varchar [not null]
   address varchar
   phone varchar
-  operation_mode_id uuid [not null, note: 'OPERATION_MODE; the API assigns CASH_REGISTER_ONLY by default']
+  operation_mode_id integer [not null, note: 'OPERATION_MODE; the API assigns CASH_REGISTER_ONLY by default']
   uses_tables boolean [not null, default: false]
   inventory_enabled boolean [not null, default: false]
   time_zone varchar [note: 'If empty, inherits the business time zone']
@@ -112,7 +114,7 @@ Table devices {
   cash_register_id uuid [note: 'Optional: phones, kitchen or administration devices are not cash registers']
   code varchar [not null]
   name varchar [not null]
-  device_type_id uuid [not null, note: 'DEVICE_TYPE']
+  device_type_id integer [not null, note: 'DEVICE_TYPE']
   last_activity_at timestamptz
   is_active boolean [not null, default: true]
   created_at timestamptz [not null, default: `now()`]
@@ -189,7 +191,7 @@ Table role_permissions {
 Table customers {
   id uuid [pk]
   business_id uuid [not null]
-  document_type_id uuid [note: 'IDENTIFICATION_TYPE']
+  document_type_id integer [note: 'IDENTIFICATION_TYPE']
   document_number varchar
   display_name varchar [not null]
   legal_name varchar
@@ -233,11 +235,11 @@ Table products {
   sku varchar
   barcode varchar
   category_id uuid [note: 'Optional for non-sellable supplies']
-  product_type_id uuid [not null, note: 'PRODUCT_TYPE']
+  product_type_id integer [not null, note: 'PRODUCT_TYPE']
   name varchar [not null]
   description varchar
   image_path varchar [note: 'Local resource backed up with the database']
-  unit_of_measure_id uuid [not null, note: 'UNIT_OF_MEASURE']
+  unit_of_measure_id integer [not null, note: 'UNIT_OF_MEASURE']
   tracks_inventory boolean [not null, default: false]
   is_sellable boolean [not null, default: true]
   tax_code varchar
@@ -316,7 +318,7 @@ Table combo_components {
 Table order_types {
   id uuid [pk]
   business_id uuid [not null]
-  typology_id uuid [not null, note: 'ORDER_TYPE; enabled status and ordering per business']
+  typology_id integer [not null, note: 'ORDER_TYPE; enabled status and ordering per business']
   is_active boolean [not null, default: true]
   sort_order integer [not null, default: 0]
   created_at timestamptz [not null, default: `now()`]
@@ -598,7 +600,7 @@ Table cash_register_movements {
   user_id uuid [not null]
   source_device_id uuid
   original_movement_id uuid [note: 'Movement reversed or corrected by this record without editing the original']
-  movement_type_id uuid [not null, note: 'CASH_REGISTER_MOVEMENT_TYPE; the code determines the effect on cash']
+  movement_type_id integer [not null, note: 'CASH_REGISTER_MOVEMENT_TYPE; the code determines the effect on cash']
   status varchar [not null, note: 'RECORDED or REVERSED; include original and offsetting movement in the balance']
   amount decimal(18,2) [not null, note: 'Always positive; the type determines the effect on the cash register']
   operation_at timestamptz [not null]
@@ -641,7 +643,7 @@ Table inventory_movements {
   source_device_id uuid
   sale_item_id uuid
   original_movement_id uuid [note: 'Movement reversed by this record without editing the original']
-  movement_type_id uuid [not null, note: 'INVENTORY_MOVEMENT_TYPE']
+  movement_type_id integer [not null, note: 'INVENTORY_MOVEMENT_TYPE']
   quantity_delta decimal(18,4) [not null, note: 'Positive for inbound and negative for outbound']
   previous_quantity decimal(18,4) [not null]
   resulting_quantity decimal(18,4) [not null]
@@ -757,7 +759,7 @@ Table printers {
   host_device_id uuid [note: 'Device with physical access to the printer if connected by USB']
   code varchar [not null]
   name varchar [not null]
-  connection_type_id uuid [not null, note: 'PRINTER_CONNECTION_TYPE']
+  connection_type_id integer [not null, note: 'PRINTER_CONNECTION_TYPE']
   destination varchar [not null, note: 'Network address or local queue name']
   paper_width_mm integer
   is_active boolean [not null, default: true]
@@ -777,7 +779,7 @@ Table print_settings {
   business_id uuid [not null]
   branch_id uuid [not null]
   printer_id uuid [not null]
-  document_type_id uuid [not null, note: 'PRINT_DOCUMENT_TYPE']
+  document_type_id integer [not null, note: 'PRINT_DOCUMENT_TYPE']
   is_automatic boolean [not null, default: false]
   copies integer [not null, default: 1]
   is_active boolean [not null, default: true]
@@ -802,7 +804,7 @@ Table print_jobs {
   order_id uuid
   requested_by_user_id uuid
   original_job_id uuid [note: 'Manual reprint of a previous job']
-  document_type_id uuid [not null, note: 'PRINT_DOCUMENT_TYPE']
+  document_type_id integer [not null, note: 'PRINT_DOCUMENT_TYPE']
   content_snapshot jsonb [not null]
   copies integer [not null, default: 1]
   status varchar [not null, default: 'PENDING', note: 'PENDING, PROCESSING, SENT, UNCERTAIN, ERROR or CANCELED']

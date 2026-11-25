@@ -1,29 +1,33 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiPos.Api.Errors;
+using MiPos.Api.Responses;
 using MiPos.Application.Common.Interfaces;
+using MiPos.Application.Typologies.Interfaces;
+using MiPos.Application.Typologies.Services;
 using MiPos.Infrastructure.Persistence;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
-builder.Services.AddProblemDetails(options =>
-{
-    options.CustomizeProblemDetails = context =>
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
     {
-        context.ProblemDetails.Instance ??= $"{context.HttpContext.Request.PathBase}{context.HttpContext.Request.Path}";
-        context.ProblemDetails.Extensions.TryAdd("traceId",
-            Activity.Current?.Id ?? context.HttpContext.TraceIdentifier);
-        if (context.ProblemDetails is ValidationProblemDetails { Status: StatusCodes.Status400BadRequest })
+        options.SuppressMapClientErrors = true;
+        options.InvalidModelStateResponseFactory = context =>
         {
-            context.ProblemDetails.Title = "La solicitud contiene errores de validación.";
-        }
-    };
-});
+            var error = ApiError.FromRequest(context.HttpContext, "Solicitud inválida",
+                "Revisa los datos enviados e inténtalo de nuevo.");
+            return new JsonResult(new ApiResponse<object>(null, error))
+            {
+                StatusCode = StatusCodes.Status400BadRequest
+            };
+        };
+    });
+builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
+builder.Services.AddScoped<ITypologyService, TypologyService>();
 builder.Services.AddDbContext<IMiPosDbContext, MiPosDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -38,6 +42,32 @@ builder.Services.AddDbContext<IMiPosDbContext, MiPosDbContext>(options =>
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseStatusCodePages(async context =>
+{
+    var httpContext = context.HttpContext;
+    var status = httpContext.Response.StatusCode;
+    if (!httpContext.Request.Path.StartsWithSegments("/api") ||
+        httpContext.RequestAborted.IsCancellationRequested ||
+        status == StatusCodes.Status499ClientClosedRequest)
+    {
+        return;
+    }
+
+    var (title, message) = status switch
+    {
+        StatusCodes.Status400BadRequest => ("Solicitud inválida", "Revisa los datos enviados e inténtalo de nuevo."),
+        StatusCodes.Status401Unauthorized => ("Autenticación requerida", "Inicia sesión para continuar."),
+        StatusCodes.Status403Forbidden => ("Acceso denegado", "No tienes permiso para realizar esta operación."),
+        StatusCodes.Status404NotFound => ("Recurso no encontrado", "No se encontró el recurso solicitado."),
+        StatusCodes.Status405MethodNotAllowed => ("Método no permitido", "El recurso no admite el método solicitado."),
+        StatusCodes.Status415UnsupportedMediaType => ("Formato no admitido", "El formato del contenido enviado no es compatible."),
+        >= 500 => ("Error del servidor", "Ocurrió un error al procesar la solicitud."),
+        _ => ("No se pudo procesar la solicitud", "Revisa la solicitud e inténtalo de nuevo.")
+    };
+
+    var error = ApiError.FromRequest(httpContext, title, message);
+    await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object>(null, error), httpContext.RequestAborted);
+});
 
 if (app.Environment.IsDevelopment())
 {

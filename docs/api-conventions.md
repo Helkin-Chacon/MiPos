@@ -8,8 +8,8 @@
 - Use JSON as the primary data exchange format.
 - Use English for endpoints and property names.
 - Use appropriate HTTP methods and status codes.
-- Keep controllers lightweight.
-- Delegate business operations to the Application layer.
+- Use traditional method bodies for controller actions.
+- Keep controllers lightweight and delegate business operations to the Application layer.
 - Avoid unnecessary response wrappers and abstractions.
 
 ## 2. API Versioning
@@ -94,56 +94,60 @@ for a resource with a retrieval endpoint.
 
 ## 6. Successful Responses
 
-Return response DTOs directly.
+Return business JSON responses as `ApiResponse<T>` from the API layer.
+Set `data` to the response DTO or collection and `error` to null.
+Construct successful responses explicitly in controllers.
+Use `List<T>` as the default collection type for query results.
 
 Example:
 
     GET /api/v1/products/{id}
 
     {
-      "id": "8e6ef72c-b481-4d04-a659-d53126d12920",
-      "name": "Executive Lunch",
-      "price": 18000,
-      "isActive": true
+      "data": {
+        "id": "8e6ef72c-b481-4d04-a659-d53126d12920",
+        "name": "Executive Lunch",
+        "price": 18000,
+        "isActive": true
+      },
+      "error": null
     }
 
-Do not introduce a mandatory generic response envelope
-such as ApiResponse<T> or Response<T>.
-
-Do not include redundant success flags or HTTP status
-codes inside successful JSON responses.
+The envelope contains only `data` and `error`. OpenAPI, Scalar
+and health use their own infrastructure response formats.
 
 Never expose EF Core entities directly.
 
 ## 7. Error Responses
 
-Use ASP.NET Core ProblemDetails and
-ValidationProblemDetails following RFC 9457.
+Return the actual HTTP error status. For business errors, set
+`data` to null and `error` to an `ApiError`.
 
 Example:
 
     {
-      "type": "about:blank",
-      "title": "Caja abierta",
-      "status": 409,
-      "detail": "La caja ya tiene una sesión activa.",
-      "instance": "/api/v1/cash-register-sessions/open",
-      "traceId": "00-ab123456..."
+      "data": null,
+      "error": {
+        "title": "Caja abierta",
+        "message": "La caja ya tiene una sesión activa.",
+        "traceId": "00-ab123456..."
+      }
     }
 
 Error guidelines:
 
 - Use centralized exception handling.
-- Use `title` and `detail` for a short title and a safe user-facing
+- Use `title` and `message` for a short title and a safe user-facing
   message in Spanish.
-- Preserve ASP.NET Core's automatic HTTP 400 validation responses
-  with field errors in `ValidationProblemDetails`.
+- Use the same envelope for automatic HTTP 400 validation responses
+  and HTTP errors under `/api` generated without a response body.
+- Preserve ASP.NET Core's handling of cancelled requests.
 - Include a trace identifier for troubleshooting.
 - Never expose stack traces, SQL statements, credentials,
   or sensitive internal information.
 
 The frontend uses the HTTP status for programmatic handling and displays
-the title and detail to the user.
+the title and message to the user.
 
 ## 8. Validation
 
@@ -227,6 +231,9 @@ entity property filtering.
 
 - Use camelCase for JSON property names.
 - Represent UUID identifiers as strings.
+- Represent typology `id` and `groupId` as JSON numbers. Use an integer
+  `groupId` query parameter to filter the catalog and an integer path
+  identifier to retrieve an individual typology.
 - Represent monetary amounts as JSON numbers.
 - Use consistent enum serialization.
 - Use ISO 8601 for dates and timestamps.
@@ -294,14 +301,11 @@ distributed locking infrastructure without approval.
 
 Use OpenAPI and Scalar.
 
-Document:
-
-- Endpoint purpose.
-- Request models.
-- Response models.
-- Required permissions.
-- HTTP status codes.
-- Relevant business errors.
+Let OpenAPI infer business controller response schemas from action return
+types. Keep actions free of recurring documentation attributes such as
+`Produces` and `ProducesResponseType`. Document endpoint behavior,
+permissions, and relevant error statuses when the action signature does
+not convey them.
 
 Interactive API documentation must be available in
 development environments.
