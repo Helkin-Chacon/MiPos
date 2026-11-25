@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using MiPos.Api.Responses;
 using MiPos.Application.Common.Exceptions;
 
 namespace MiPos.IntegrationTests;
@@ -17,66 +18,78 @@ public sealed class ErrorHandlingTests(WebApplicationFactory<Program> factory)
     [InlineData("missing", 404, "Registro no encontrado", "No existe un registro con ese identificador.")]
     [InlineData("conflict", 409, "Registro cerrado", "El registro ya está cerrado.")]
     [InlineData("validation", 422, "Monto inválido", "El monto debe ser mayor que cero.")]
-    public async Task ApplicationExceptionReturnsProblemDetails(
-        string scenario, int status, string title, string detail)
+    public async Task ApplicationExceptionReturnsApiError(
+        string scenario, int status, string title, string message)
     {
         using var client = CreateClient();
-        var path = $"/test-errors/{scenario}";
+        var path = $"/api/v1/test-errors/{scenario}";
         using var response = await client.GetAsync($"{path}?ignored=private");
 
-        var problem = await AssertProblemDetails(response, status, path);
-        Assert.Equal(title, problem.GetProperty("title").GetString());
-        Assert.Equal(detail, problem.GetProperty("detail").GetString());
-        Assert.False(problem.TryGetProperty("errors", out _));
+        var error = await AssertApiError(response, status);
+        Assert.Equal(title, error.GetProperty("title").GetString());
+        Assert.Equal(message, error.GetProperty("message").GetString());
     }
 
     [Theory]
     [InlineData("unexpected")]
     [InlineData("internal-cancellation")]
-    public async Task UnexpectedExceptionReturnsSafeProblemDetails(string scenario)
+    public async Task UnexpectedExceptionReturnsSafeApiError(string scenario)
     {
         using var client = CreateClient();
-        var path = $"/test-errors/{scenario}";
+        var path = $"/api/v1/test-errors/{scenario}";
         using var response = await client.GetAsync(path);
 
-        var problem = await AssertProblemDetails(response, 500, path);
-        Assert.Equal("Error interno del servidor", problem.GetProperty("title").GetString());
-        Assert.Equal("Ocurrió un error inesperado al procesar la solicitud.", problem.GetProperty("detail").GetString());
-        Assert.DoesNotContain("Password=private", problem.GetRawText());
-        Assert.DoesNotContain("SELECT", problem.GetRawText());
-        Assert.DoesNotContain("Exception", problem.GetRawText());
+        var error = await AssertApiError(response, 500);
+        Assert.Equal("Error interno del servidor", error.GetProperty("title").GetString());
+        Assert.Equal("Ocurrió un error inesperado al procesar la solicitud.", error.GetProperty("message").GetString());
+        Assert.DoesNotContain("Password=private", error.GetRawText());
+        Assert.DoesNotContain("SELECT", error.GetRawText());
+        Assert.DoesNotContain("Exception", error.GetRawText());
     }
 
     [Fact]
-    public async Task UnsupportedAcceptHeaderFallsBackToProblemDetailsJson()
+    public async Task ValidRequestReturnsExplicitSuccessEnvelope()
+    {
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync("/api/v1/test-errors", new { name = "MiPos" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(new[] { "data", "error" }, body.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal("MiPos", body.GetProperty("data").GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("error").ValueKind);
+    }
+
+    [Fact]
+    public async Task UnsupportedAcceptHeaderStillReturnsJsonApiError()
     {
         using var client = CreateClient();
         client.DefaultRequestHeaders.Accept.ParseAdd("application/xml");
-        const string path = "/test-errors/missing";
+        const string path = "/api/v1/test-errors/missing";
         using var response = await client.GetAsync(path);
 
-        var problem = await AssertProblemDetails(response, 404, path);
-        Assert.Equal("Registro no encontrado", problem.GetProperty("title").GetString());
-        Assert.Equal("No existe un registro con ese identificador.", problem.GetProperty("detail").GetString());
+        var error = await AssertApiError(response, 404);
+        Assert.Equal("Registro no encontrado", error.GetProperty("title").GetString());
+        Assert.Equal("No existe un registro con ese identificador.", error.GetProperty("message").GetString());
     }
 
     [Fact]
-    public async Task InvalidRequestReturnsNativeValidationProblemDetails()
+    public async Task InvalidRequestReturnsValidationApiError()
     {
         using var client = CreateClient();
-        const string path = "/test-errors";
+        const string path = "/api/v1/test-errors";
         using var response = await client.PostAsJsonAsync(path, new { });
 
-        var problem = await AssertProblemDetails(response, 400, path);
-        Assert.Equal("La solicitud contiene errores de validación.", problem.GetProperty("title").GetString());
-        Assert.Equal("El nombre es obligatorio.", problem.GetProperty("errors").GetProperty("Name")[0].GetString());
+        var error = await AssertApiError(response, 400);
+        Assert.Equal("Solicitud inválida", error.GetProperty("title").GetString());
+        Assert.Equal("Revisa los datos enviados e inténtalo de nuevo.", error.GetProperty("message").GetString());
     }
 
     [Fact]
     public async Task AbortedRequestUsesNativeCancellationHandling()
     {
         using var client = CreateClient();
-        using var response = await client.GetAsync("/test-errors/request-cancellation");
+        using var response = await client.GetAsync("/api/v1/test-errors/request-cancellation");
 
         Assert.Equal(499, (int)response.StatusCode);
         Assert.Empty(await response.Content.ReadAsStringAsync());
@@ -87,22 +100,23 @@ public sealed class ErrorHandlingTests(WebApplicationFactory<Program> factory)
             services.AddControllers().AddApplicationPart(typeof(ErrorProbeController).Assembly)))
         .CreateClient();
 
-    private static async Task<JsonElement> AssertProblemDetails(
-        HttpResponseMessage response, int status, string instance)
+    internal static async Task<JsonElement> AssertApiError(HttpResponseMessage response, int status)
     {
         Assert.Equal((HttpStatusCode)status, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(status, problem.GetProperty("status").GetInt32());
-        Assert.Equal(instance, problem.GetProperty("instance").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("traceId").GetString()));
-        Assert.False(problem.TryGetProperty("code", out _));
-        return problem;
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(new[] { "data", "error" }, body.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("data").ValueKind);
+        var error = body.GetProperty("error");
+        Assert.Equal(new[] { "message", "title", "traceId" },
+            error.EnumerateObject().Select(property => property.Name).Order());
+        Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("traceId").GetString()));
+        return error;
     }
 }
 
 [ApiController]
-[Route("test-errors")]
+[Route("api/v1/test-errors")]
 public sealed class ErrorProbeController : ControllerBase
 {
     private const string InternalMessage = "SELECT * FROM records; Password=private";
@@ -125,7 +139,7 @@ public sealed class ErrorProbeController : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult Post(ProbeRequest request) => Ok();
+    public ApiResponse<ProbeRequest> Post(ProbeRequest request) => new(request, null);
 
     public sealed record ProbeRequest([Required(ErrorMessage = "El nombre es obligatorio.")] string? Name);
 }

@@ -1,15 +1,19 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
+using MiPos.Api.Responses;
 using MiPos.Application.Common.Exceptions;
 
 namespace MiPos.Api.Errors;
 
-public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetailsService, ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
-        var (status, title, detail) = exception switch
+        if (!httpContext.Request.Path.StartsWithSegments("/api"))
+        {
+            return false;
+        }
+
+        var (status, title, message) = exception switch
         {
             NotFoundException error =>
                 (StatusCodes.Status404NotFound, error.Title, error.Message),
@@ -21,33 +25,16 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetails
                 "Ocurrió un error inesperado al procesar la solicitud.")
         };
 
-        var traceId = Activity.Current?.Id ?? httpContext.TraceIdentifier;
+        var apiError = ApiError.FromRequest(httpContext, title, message);
         if (status == StatusCodes.Status500InternalServerError)
         {
             // Exception messages can contain credentials or database details.
             logger.LogError("Unexpected exception {ExceptionType}. TraceId: {TraceId}",
-                exception.GetType().FullName, traceId);
+                exception.GetType().FullName, apiError.TraceId);
         }
-
-        var problem = new ProblemDetails
-        {
-            Status = status,
-            Title = title,
-            Detail = detail,
-            Instance = $"{httpContext.Request.PathBase}{httpContext.Request.Path}"
-        };
-        problem.Extensions["traceId"] = traceId;
 
         httpContext.Response.StatusCode = status;
-        if (!await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
-        {
-            HttpContext = httpContext,
-            ProblemDetails = problem
-        }))
-        {
-            await httpContext.Response.WriteAsJsonAsync(problem, options: null,
-                contentType: "application/problem+json", cancellationToken: cancellationToken);
-        }
+        await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object>(null, apiError), cancellationToken);
 
         return true;
     }
