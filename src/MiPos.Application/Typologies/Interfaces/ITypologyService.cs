@@ -4,7 +4,7 @@ namespace MiPos.Application.Typologies.Interfaces;
 
 public interface ITypologyService
 {
-    Task<List<TypologyResponse>> GetAllAsync(int? groupId, CancellationToken cancellationToken);
+    Task<List<TypologyResponse>> GetTypologiesAsync(int? groupId, CancellationToken cancellationToken);
 
-    Task<TypologyResponse> GetByIdAsync(int id, CancellationToken cancellationToken);
+    Task<TypologyResponse> GetTypologyByIdAsync(int typologyId, CancellationToken cancellationToken);
 }

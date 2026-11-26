@@ -50,6 +50,10 @@ Devices are not necessarily associated with a cash register.
 
 Business and branch data must remain properly isolated.
 
+During the MVP, the MiPos installation team creates businesses and branches
+through the API using an HTTP client. The MVP has no administration UI for
+these operations. Seed data contains no businesses or branches.
+
 The initial market uses COP and the America/Bogota time zone.
 
 ## 3. Operation Modes

@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using MiPos.Api.Errors;
 using MiPos.Api.Responses;
 using MiPos.Application.Common.Interfaces;
+using MiPos.Application.Organization.Interfaces;
+using MiPos.Application.Organization.Services;
 using MiPos.Application.Typologies.Interfaces;
 using MiPos.Application.Typologies.Services;
 using MiPos.Infrastructure.Persistence;
@@ -18,7 +20,7 @@ builder.Services.AddControllers()
         {
             var error = ApiError.FromRequest(context.HttpContext, "Solicitud inválida",
                 "Revisa los datos enviados e inténtalo de nuevo.");
-            return new JsonResult(new ApiResponse<object>(null, error))
+            return new JsonResult(new ApiResponse<object> { Error = error })
             {
                 StatusCode = StatusCodes.Status400BadRequest
             };
@@ -28,6 +30,8 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<ITypologyService, TypologyService>();
+builder.Services.AddScoped<IBusinessService, BusinessService>();
+builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddDbContext<IMiPosDbContext, MiPosDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -66,7 +70,7 @@ app.UseStatusCodePages(async context =>
     };
 
     var error = ApiError.FromRequest(httpContext, title, message);
-    await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object>(null, error), httpContext.RequestAborted);
+    await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object> { Error = error }, httpContext.RequestAborted);
 });
 
 if (app.Environment.IsDevelopment())

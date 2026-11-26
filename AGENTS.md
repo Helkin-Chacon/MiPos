@@ -84,6 +84,9 @@ before making significant changes.
 - Use asynchronous operations for I/O.
 - Propagate CancellationToken where appropriate.
 - Prefer explicit, readable, and maintainable code.
+- Define request and response models as classes with explicit get and set properties.
+- Map data using object initializers.
+- Reserve sealed and record for cases that require their specific behavior.
 - Add comments only when they provide meaningful context.
 - Follow existing project conventions.
 
@@ -111,6 +114,7 @@ Do not introduce schema changes without explaining their purpose.
 
 - Use ASP.NET Core Controllers and follow the controller conventions in docs/api-conventions.md.
 - Follow REST conventions.
+- Implement endpoints for documented functional needs. Add CRUD operations individually as needed.
 - Use /api/v1/ for API versioning.
 - Use appropriate HTTP status codes.
 - Use ApiResponse<T> for business JSON responses and ApiError for error details.
@@ -155,6 +159,7 @@ Do not overengineer solutions or implement speculative requirements.
 
 - Never hardcode credentials, tokens, or secrets.
 - Enforce authentication and authorization where required.
+- Require authentication and permissions for administrative endpoints before deploying MiPos in restaurants.
 - Validate business ownership of protected resources.
 - Protect sensitive customer and fiscal information.
 - Never log passwords, tokens, or payment credentials.

@@ -7,22 +7,22 @@ namespace MiPos.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/typologies")]
-public sealed class TypologiesController(
+public class TypologiesController(
     ITypologyService service) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<List<TypologyResponse>>>> GetAll([FromQuery] int? groupId, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<List<TypologyResponse>>>> GetTypologies([FromQuery] int? groupId, CancellationToken cancellationToken)
     {
-        var typologies = await service.GetAllAsync(groupId, cancellationToken);
+        var typologies = await service.GetTypologiesAsync(groupId, cancellationToken);
 
-        return Ok(new ApiResponse<List<TypologyResponse>>(typologies, null));
+        return Ok(new ApiResponse<List<TypologyResponse>> { Data = typologies });
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<ApiResponse<TypologyResponse>>> GetById(int id, CancellationToken cancellationToken)
+    [HttpGet("{typologyId:int}")]
+    public async Task<ActionResult<ApiResponse<TypologyResponse>>> GetTypologyById(int typologyId, CancellationToken cancellationToken)
     {
-        var typology = await service.GetByIdAsync(id, cancellationToken);
+        var typology = await service.GetTypologyByIdAsync(typologyId, cancellationToken);
 
-        return Ok(new ApiResponse<TypologyResponse>(typology, null));
+        return Ok(new ApiResponse<TypologyResponse> { Data = typology });
     }
 }

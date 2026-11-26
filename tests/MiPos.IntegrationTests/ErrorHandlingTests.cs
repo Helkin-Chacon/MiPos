@@ -139,7 +139,7 @@ public sealed class ErrorProbeController : ControllerBase
     }
 
     [HttpPost]
-    public ApiResponse<ProbeRequest> Post(ProbeRequest request) => new(request, null);
+    public ApiResponse<ProbeRequest> Post(ProbeRequest request) => new() { Data = request };
 
     public sealed record ProbeRequest([Required(ErrorMessage = "El nombre es obligatorio.")] string? Name);
 }
