@@ -2,8 +2,19 @@ using System.Diagnostics;
 
 namespace MiPos.Api.Responses;
 
-public sealed record ApiError(string Title, string Message, string TraceId)
+public class ApiError
 {
-    internal static ApiError FromRequest(HttpContext context, string title, string message) =>
-        new(title, message, Activity.Current?.Id ?? context.TraceIdentifier);
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string TraceId { get; set; } = string.Empty;
+
+    internal static ApiError FromRequest(HttpContext context, string title, string message)
+    {
+        return new ApiError
+        {
+            Title = title,
+            Message = message,
+            TraceId = Activity.Current?.Id ?? context.TraceIdentifier
+        };
+    }
 }

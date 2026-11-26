@@ -5,7 +5,7 @@ using MiPos.Infrastructure.Persistence.Seed;
 
 namespace MiPos.Infrastructure.Persistence.Configurations;
 
-internal sealed class TypologyConfiguration : IEntityTypeConfiguration<Typology>
+internal class TypologyConfiguration : IEntityTypeConfiguration<Typology>
 {
     public void Configure(EntityTypeBuilder<Typology> builder)
     {

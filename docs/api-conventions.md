@@ -27,6 +27,8 @@ changes require them.
 
 Use plural resource names and kebab-case.
 
+Expose only operations that support a documented workflow.
+
 Examples:
 
     /api/v1/businesses
@@ -46,17 +48,40 @@ that cannot be represented naturally as CRUD.
 
 Examples:
 
-    POST /api/v1/orders/{id}/cancel
-    POST /api/v1/orders/{id}/charge
+    POST /api/v1/orders/{orderId}/cancel
+    POST /api/v1/orders/{orderId}/charge
     POST /api/v1/cash-register-sessions/open
-    POST /api/v1/cash-register-sessions/{id}/close
-    POST /api/v1/fiscal-documents/{id}/retry
+    POST /api/v1/cash-register-sessions/{cashRegisterSessionId}/close
+    POST /api/v1/fiscal-documents/{fiscalDocumentId}/retry
 
 Avoid generic endpoints such as:
 
     /api/v1/products/create
     /api/v1/products/get-all
     /api/v1/products/update
+
+### Controller Actions and Service Methods
+
+Name controller actions after the operation and the resource. Include the
+criterion when a required identifier scopes the result. For example,
+`GetBranchesByBusinessId` lists branches for one business, `GetBranchById`
+retrieves a single branch, and `CreateBranch` creates a branch. Use
+`GetTypologies` for a collection with an optional `groupId` filter.
+
+Use the same descriptive name in the application service interface and
+implementation, with the `Async` suffix for asynchronous methods. For
+example, `GetBranchesByBusinessId` calls `GetBranchesByBusinessIdAsync`.
+
+Name identifier parameters for the resource they identify, such as
+`businessId`, `branchId`, and `typologyId`. In nested routes, use the
+parent resource's identifier when the route is scoped to that parent.
+For example, `/api/v1/businesses/{businessId}/branches` uses `businessId`,
+and `/api/v1/branches/{branchId}` uses `branchId`.
+
+Keep the identifier name consistent across the route template, controller
+action, and service method. For `CreatedAtAction`, reference the detail action
+with `nameof` and match its route parameter name in the route values so
+the `Location` header resolves to the new resource.
 
 ## 4. HTTP Methods
 
@@ -101,7 +126,7 @@ Use `List<T>` as the default collection type for query results.
 
 Example:
 
-    GET /api/v1/products/{id}
+    GET /api/v1/products/{productId}
 
     {
       "data": {
@@ -214,7 +239,7 @@ Use query parameters for filtering.
 Examples:
 
     GET /api/v1/products?search=burger
-    GET /api/v1/products?categoryId={id}&isActive=true
+    GET /api/v1/products?categoryId={categoryId}&isActive=true
     GET /api/v1/orders?status=OPEN
     GET /api/v1/sales?fromDate=2026-11-01&toDate=2026-11-30
 

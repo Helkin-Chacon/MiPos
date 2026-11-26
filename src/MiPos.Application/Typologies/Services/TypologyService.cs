@@ -6,9 +6,9 @@ using MiPos.Application.Typologies.Responses;
 
 namespace MiPos.Application.Typologies.Services;
 
-public sealed class TypologyService(IMiPosDbContext dbContext) : ITypologyService
+public class TypologyService(IMiPosDbContext dbContext) : ITypologyService
 {
-    public async Task<List<TypologyResponse>> GetAllAsync(int? groupId, CancellationToken cancellationToken)
+    public async Task<List<TypologyResponse>> GetTypologiesAsync(int? groupId, CancellationToken cancellationToken)
     {
         var query = dbContext.Typologies.AsNoTracking();
         if (groupId is int requestedGroupId)
@@ -20,18 +20,34 @@ public sealed class TypologyService(IMiPosDbContext dbContext) : ITypologyServic
             .OrderBy(typology => typology.GroupId)
             .ThenBy(typology => typology.SortOrder)
             .ThenBy(typology => typology.Code)
-            .Select(typology => new TypologyResponse(typology.Id, typology.GroupId, typology.Code,
-                typology.Name, typology.Description, typology.SortOrder, typology.IsActive))
+            .Select(typology => new TypologyResponse
+            {
+                Id = typology.Id,
+                GroupId = typology.GroupId,
+                Code = typology.Code,
+                Name = typology.Name,
+                Description = typology.Description,
+                SortOrder = typology.SortOrder,
+                IsActive = typology.IsActive
+            })
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<TypologyResponse> GetByIdAsync(int id, CancellationToken cancellationToken)
+    public async Task<TypologyResponse> GetTypologyByIdAsync(int typologyId, CancellationToken cancellationToken)
     {
         var typology = await dbContext.Typologies.AsNoTracking()
-            .SingleOrDefaultAsync(typology => typology.Id == id, cancellationToken)
+            .SingleOrDefaultAsync(typology => typology.Id == typologyId, cancellationToken)
             ?? throw new NotFoundException("Tipología no encontrada", "No existe una tipología con ese identificador.");
 
-        return new TypologyResponse(typology.Id, typology.GroupId, typology.Code,
-            typology.Name, typology.Description, typology.SortOrder, typology.IsActive);
+        return new TypologyResponse
+        {
+            Id = typology.Id,
+            GroupId = typology.GroupId,
+            Code = typology.Code,
+            Name = typology.Name,
+            Description = typology.Description,
+            SortOrder = typology.SortOrder,
+            IsActive = typology.IsActive
+        };
     }
 }

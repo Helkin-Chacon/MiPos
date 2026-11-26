@@ -25,15 +25,16 @@ public sealed class TypologyTests(WebApplicationFactory<Program> factory)
         var openApi = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
         var paths = openApi.GetProperty("paths");
         var list = paths.GetProperty("/api/v1/typologies");
-        var detail = paths.GetProperty("/api/v1/typologies/{id}");
+        var detail = paths.GetProperty("/api/v1/typologies/{typologyId}");
         Assert.Equal("get", Assert.Single(list.EnumerateObject()).Name);
         Assert.Equal("get", Assert.Single(detail.EnumerateObject()).Name);
         var filter = Assert.Single(list.GetProperty("get").GetProperty("parameters").EnumerateArray());
         Assert.Equal("groupId", filter.GetProperty("name").GetString());
         Assert.Equal("query", filter.GetProperty("in").GetString());
         Assert.Contains("integer", filter.GetProperty("schema").GetRawText());
-        var id = Assert.Single(detail.GetProperty("get").GetProperty("parameters").EnumerateArray());
-        Assert.Equal("integer", id.GetProperty("schema").GetProperty("type").GetString());
+        var typologyId = Assert.Single(detail.GetProperty("get").GetProperty("parameters").EnumerateArray());
+        Assert.Equal("typologyId", typologyId.GetProperty("name").GetString());
+        Assert.Equal("integer", typologyId.GetProperty("schema").GetProperty("type").GetString());
         AssertResponseEnvelope(openApi, list, "200");
         AssertResponseEnvelope(openApi, detail, "200");
     }
@@ -92,8 +93,7 @@ public sealed class TypologyTests(WebApplicationFactory<Program> factory)
     {
         using var context = CreateContext();
         var model = context.GetService<IDesignTimeModel>().Model;
-        var table = Assert.Single(model.GetRelationalModel().Tables);
-        Assert.Equal("typologies", table.Name);
+        var table = Assert.Single(model.GetRelationalModel().Tables, table => table.Name == "typologies");
         Assert.Equal("id", Assert.Single(table.PrimaryKey!.Columns).Name);
         var index = Assert.Single(table.Indexes);
         Assert.True(index.IsUnique);
@@ -166,14 +166,14 @@ public sealed class TypologyTests(WebApplicationFactory<Program> factory)
 
     private sealed class TypologyProbeService : ITypologyService
     {
-        public Task<List<TypologyResponse>> GetAllAsync(int? groupId, CancellationToken cancellationToken) =>
+        public Task<List<TypologyResponse>> GetTypologiesAsync(int? groupId, CancellationToken cancellationToken) =>
             Task.FromResult(groupId == 6 ? new List<TypologyResponse> { CreateResponse(21) } : []);
 
-        public Task<TypologyResponse> GetByIdAsync(int id, CancellationToken cancellationToken) =>
-            Task.FromResult(CreateResponse(id));
+        public Task<TypologyResponse> GetTypologyByIdAsync(int typologyId, CancellationToken cancellationToken) =>
+            Task.FromResult(CreateResponse(typologyId));
 
         private static TypologyResponse CreateResponse(int id) =>
-            new(id, 6, "DINE_IN", "En mesa", null, 1, true);
+            new() { Id = id, GroupId = 6, Code = "DINE_IN", Name = "En mesa", SortOrder = 1, IsActive = true };
     }
 
     private static MiPosDbContext CreateContext() =>

@@ -1,3 +1,7 @@
 namespace MiPos.Api.Responses;
 
-public sealed record ApiResponse<T>(T? Data, ApiError? Error);
+public class ApiResponse<T>
+{
+    public T? Data { get; set; }
+    public ApiError? Error { get; set; }
+}

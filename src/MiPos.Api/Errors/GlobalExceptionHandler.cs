@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using MiPos.Api.Responses;
 using MiPos.Application.Common.Exceptions;
 
 namespace MiPos.Api.Errors;
 
-public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -19,6 +20,9 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
                 (StatusCodes.Status404NotFound, error.Title, error.Message),
             ConflictException error =>
                 (StatusCodes.Status409Conflict, error.Title, error.Message),
+            DbUpdateConcurrencyException =>
+                (StatusCodes.Status409Conflict, "Versión desactualizada",
+                    "El registro cambió. Consulta la versión actual antes de volver a actualizarlo."),
             BusinessValidationException error =>
                 (StatusCodes.Status422UnprocessableEntity, error.Title, error.Message),
             _ => (StatusCodes.Status500InternalServerError, "Error interno del servidor",
@@ -34,7 +38,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         }
 
         httpContext.Response.StatusCode = status;
-        await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object>(null, apiError), cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object> { Error = apiError }, cancellationToken);
 
         return true;
     }
