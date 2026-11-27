@@ -79,37 +79,38 @@ Table management can be enabled independently at branch level.
 
 ## 4. Users, Roles and Permissions
 
-Each user belongs to a business and has one role.
+Each user belongs to a business and has exactly one role from that business.
+Permissions are assigned through that role. Individual permission grants and
+individual branch assignments are outside the initial authorization model.
 
-A role may contain multiple permissions.
+Permissions form a global catalog maintained by the development team.
+Each business owns its roles and their assignments. New and existing businesses
+start with two roles:
 
-Initial roles may include:
+- `ADMINISTRATOR` (Administrador) is reserved and retains access to the entire
+  catalog, including permissions added in future migrations.
+- `CASHIER` (Cajero) starts with `POS_SELL` and `CASH_REGISTER_OPEN_CLOSE`.
+  Each business may customize its cashier role when role management is available.
 
-- Administrator
-- Cashier
-- Waiter
-- Supervisor
+| Permission | Scope |
+|---|---|
+| `POS_SELL` | Mesas, pedidos, ventas y cobro |
+| `CASH_REGISTER_OPEN_CLOSE` | Apertura y cierre de caja |
+| `CASH_REGISTER_MOVEMENTS` | Ingresos y salidas de caja |
+| `ADMIN_ACCESS` | Entrada al panel administrativo |
+| `CATALOG_ACCESS` | Categorías, productos y combos |
+| `REPORTS_ACCESS` | Todos los reportes |
+| `SETTINGS_ACCESS` | Negocio, operación del POS, métodos de pago e impresión |
+| `USERS_AND_ROLES_MANAGE` | Administración de usuarios, roles y permisos |
+| `SANITATION_ACCESS` | Módulo de sanidad |
+| `BILLING_ACCESS` | Facturación electrónica |
 
-Permissions determine the operations available to each user.
-
-Examples:
-
-- Manage products
-- Create orders
-- Modify orders
-- Cancel order items
-- Register payments
-- Open cash registers
-- Close cash registers
-- Register cash movements
-- View reports
-- Manage fiscal documents
-- Manage users
-
-Permissions must be enforced by the backend, not only by the UI.
-
-Individual branch assignments are not part of the initial
-authorization model.
+Issue #5 will enforce authorization in the backend. Access to the
+administration panel requires `ADMIN_ACCESS`. Each administrative module
+also requires its own permission. Branch settings such as table management,
+inventory and operation mode apply independently of permissions. When role
+management is implemented, it must protect the reserved administrator role
+and its complete set of assignments.
 
 ## 5. Typologies
 

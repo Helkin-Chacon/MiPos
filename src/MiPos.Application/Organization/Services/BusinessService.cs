@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using MiPos.Application.Common.Exceptions;
 using MiPos.Application.Common.Interfaces;
+using MiPos.Application.Identity.Services;
 using MiPos.Application.Organization.Interfaces;
 using MiPos.Application.Organization.Requests;
 using MiPos.Application.Organization.Responses;
@@ -40,6 +41,7 @@ public class BusinessService(IMiPosDbContext dbContext) : IBusinessService
         };
 
         dbContext.Businesses.Add(business);
+        await DefaultBusinessRoles.AddAsync(dbContext, business, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToResponse(business);
     }

@@ -22,6 +22,182 @@ namespace MiPos.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MiPos.Domain.Entities.Identity.Permission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("varchar")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("varchar")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("varchar")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("permissions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("e2aa09a2-9a8d-42fd-827c-5069cb54d3d2"),
+                            Code = "POS_SELL",
+                            Description = "Gestión de mesas, pedidos, ventas y cobro.",
+                            Name = "Vender en caja"
+                        },
+                        new
+                        {
+                            Id = new Guid("2afadaf0-33f4-4623-b734-c4e8d917dbd2"),
+                            Code = "CASH_REGISTER_OPEN_CLOSE",
+                            Description = "Apertura y cierre de caja.",
+                            Name = "Abrir y cerrar caja"
+                        },
+                        new
+                        {
+                            Id = new Guid("7b94d819-6dfc-46f2-8298-9866761de324"),
+                            Code = "CASH_REGISTER_MOVEMENTS",
+                            Description = "Registro de ingresos y salidas de caja.",
+                            Name = "Movimientos de caja"
+                        },
+                        new
+                        {
+                            Id = new Guid("ce909594-b90c-4804-a9c7-34a32f952387"),
+                            Code = "ADMIN_ACCESS",
+                            Description = "Acceso al panel administrativo.",
+                            Name = "Acceso al administrador"
+                        },
+                        new
+                        {
+                            Id = new Guid("ab044f9f-e469-4b36-993d-a161577de166"),
+                            Code = "CATALOG_ACCESS",
+                            Description = "Gestión de categorías, productos y combos.",
+                            Name = "Catálogo"
+                        },
+                        new
+                        {
+                            Id = new Guid("628405a6-f077-4153-af03-893f17fc8ea4"),
+                            Code = "REPORTS_ACCESS",
+                            Description = "Acceso a todos los reportes.",
+                            Name = "Reportes"
+                        },
+                        new
+                        {
+                            Id = new Guid("ce203714-a5e9-47cb-bfb6-8b545844d874"),
+                            Code = "SETTINGS_ACCESS",
+                            Description = "Configuración del negocio, operación del POS, métodos de pago e impresión.",
+                            Name = "Configuración"
+                        },
+                        new
+                        {
+                            Id = new Guid("e8e229be-d2c9-44ac-acbe-accf4e8db0a5"),
+                            Code = "USERS_AND_ROLES_MANAGE",
+                            Description = "Administración de usuarios, roles y permisos.",
+                            Name = "Usuarios y permisos"
+                        },
+                        new
+                        {
+                            Id = new Guid("2e8e8006-ac21-400e-aabd-56121c21adda"),
+                            Code = "SANITATION_ACCESS",
+                            Description = "Acceso al módulo de sanidad.",
+                            Name = "Sanidad"
+                        },
+                        new
+                        {
+                            Id = new Guid("49055b32-382d-4697-b53f-aff65296184e"),
+                            Code = "BILLING_ACCESS",
+                            Description = "Acceso a todos los apartados de facturación electrónica.",
+                            Name = "Facturación electrónica"
+                        });
+                });
+
+            modelBuilder.Entity("MiPos.Domain.Entities.Identity.Role", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("varchar")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("varchar")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("roles", (string)null);
+                });
+
+            modelBuilder.Entity("MiPos.Domain.Entities.Identity.RolePermission", b =>
+                {
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid>("PermissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("permission_id");
+
+                    b.HasKey("BusinessId", "RoleId", "PermissionId");
+
+                    b.ToTable("role_permissions", (string)null);
+                });
+
             modelBuilder.Entity("MiPos.Domain.Entities.Organization.Branch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -574,6 +750,41 @@ namespace MiPos.Infrastructure.Persistence.Migrations
                             Name = "Comanda de cocina",
                             SortOrder = 2
                         });
+                });
+
+            modelBuilder.Entity("MiPos.Domain.Entities.Identity.Role", b =>
+                {
+                    b.HasOne("MiPos.Domain.Entities.Organization.Business", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_roles_business_id");
+                });
+
+            modelBuilder.Entity("MiPos.Domain.Entities.Identity.RolePermission", b =>
+                {
+                    b.HasOne("MiPos.Domain.Entities.Organization.Business", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_permissions_business_id");
+
+                    b.HasOne("MiPos.Domain.Entities.Identity.Permission", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_permissions_permission_id");
+
+                    b.HasOne("MiPos.Domain.Entities.Identity.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId", "BusinessId")
+                        .HasPrincipalKey("Id", "BusinessId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_permissions_role_id");
                 });
 
             modelBuilder.Entity("MiPos.Domain.Entities.Organization.Branch", b =>

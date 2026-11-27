@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using MiPos.Application.Common.Exceptions;
 using MiPos.Application.Common.Interfaces;
+using MiPos.Domain.Entities.Identity;
 using MiPos.Domain.Entities.Organization;
 using MiPos.Domain.Entities.Typologies;
 using MiPos.Infrastructure.Persistence.Configurations;
@@ -15,6 +16,9 @@ public class MiPosDbContext(DbContextOptions<MiPosDbContext> options)
     public DbSet<Typology> Typologies => Set<Typology>();
     public DbSet<Business> Businesses => Set<Business>();
     public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
