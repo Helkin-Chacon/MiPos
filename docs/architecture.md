@@ -281,6 +281,21 @@ controlled by application rules.
 Typologies must not replace independent business entities
 such as products, categories, payment methods, roles, or permissions.
 
+### Roles and permissions
+
+Seed the global permission catalog with fixed GUIDs and EF Core `HasData`.
+The business creation use case stages its default roles and assignments
+and saves them together with the business in one EF Core transaction.
+The `AddRolesAndPermissions` migration provisions existing businesses.
+Its PostgreSQL trigger grants newly inserted catalog entries to existing
+administrator roles. Deploy catalog migrations with the API stopped so
+business creation reads the complete updated catalog.
+
+Role assignments reference `(role_id, business_id)` to enforce tenant
+isolation. Future role editing use cases must update `updated_at` and
+increment `version` when changing a role or its assignments, saving the
+changes together so EF Core can detect concurrent edits.
+
 ## 11. Transactional Consistency
 
 Critical operations include:
