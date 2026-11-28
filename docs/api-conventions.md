@@ -313,6 +313,24 @@ Successful updates return `data: true`. A duplicate username returns 409
 and an incorrect current password returns 422. Existing JWTs remain valid until
 their original expiration after a password change.
 
+### Business user administration
+
+These endpoints require a valid JWT. The authenticated business scopes all
+operations.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /api/v1/users` | | 200 with active and inactive users |
+| `POST /api/v1/users` | `username`, `password`, `firstName`, `lastName`, `email`, `roleId` | 201 with the created user |
+| `PUT /api/v1/users/{userId}` | `username`, `firstName`, `lastName`, `email`, `roleId` | 200 with `data: true` |
+| `PATCH /api/v1/users/{userId}/status` | `isActive` | 200 with `data: true` |
+
+All request fields shown are required. GET and POST return `id`, `username`,
+`firstName`, `lastName`, `email`, `roleId`, `roleCode`, and `isActive`.
+An inaccessible user returns 404. An invalid role or self-deactivation returns
+422. A duplicate username or an operation that would remove the last active
+administrator returns 409.
+
 ## 13. Concurrency and Transactional Operations
 
 Critical operations must handle concurrent requests safely.

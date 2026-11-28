@@ -113,6 +113,11 @@ inventory and operation mode apply independently of permissions. When role
 management is implemented, it must protect the reserved administrator role
 and its complete set of assignments.
 
+User management currently requires a valid JWT and is scoped to the authenticated
+business. The assigned role must be active and belong to that business. Users
+cannot deactivate their own account. Deactivation and role changes must preserve
+at least one active administrator in the business.
+
 ## 5. Typologies
 
 Typologies provide centralized classifications used by the system.

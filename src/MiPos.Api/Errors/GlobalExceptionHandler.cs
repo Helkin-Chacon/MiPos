@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using MiPos.Api.Responses;
 using MiPos.Application.Common.Exceptions;
+using Npgsql;
 
 namespace MiPos.Api.Errors;
 
@@ -20,7 +21,9 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
                 (StatusCodes.Status404NotFound, error.Title, error.Message),
             ConflictException error =>
                 (StatusCodes.Status409Conflict, error.Title, error.Message),
-            DbUpdateConcurrencyException =>
+            DbUpdateConcurrencyException or
+            PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } or
+            DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.SerializationFailure } } =>
                 (StatusCodes.Status409Conflict, "Versión desactualizada",
                     "El registro cambió. Consulta la versión actual antes de volver a actualizarlo."),
             BusinessValidationException error =>

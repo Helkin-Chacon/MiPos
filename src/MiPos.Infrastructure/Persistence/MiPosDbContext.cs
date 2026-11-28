@@ -1,5 +1,7 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using Microsoft.EntityFrameworkCore.Storage;
 using MiPos.Application.Common.Exceptions;
 using MiPos.Application.Common.Interfaces;
 using MiPos.Domain.Entities.Identity;
@@ -20,6 +22,9 @@ public class MiPosDbContext(DbContextOptions<MiPosDbContext> options)
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken) =>
+        Database.BeginTransactionAsync(isolationLevel, cancellationToken);
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

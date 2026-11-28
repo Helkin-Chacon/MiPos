@@ -1,4 +1,6 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using MiPos.Domain.Entities.Identity;
 using MiPos.Domain.Entities.Organization;
 using MiPos.Domain.Entities.Typologies;
@@ -16,4 +18,5 @@ public interface IMiPosDbContext
     DbSet<RolePermission> RolePermissions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken);
 }
