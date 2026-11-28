@@ -160,8 +160,8 @@ dotnet test MiPos.slnx
 ```
 
 Para ejecutar las pruebas con PostgreSQL, define
-`MIPOS_IDENTITY_TEST_CONNECTION`, `MIPOS_ROLES_TEST_CONNECTION` y
-`MIPOS_ORGANIZATION_TEST_CONNECTION` con bases temporales vacías y distintas,
+`MIPOS_IDENTITY_TEST_CONNECTION`, `MIPOS_ROLES_TEST_CONNECTION`,
+`MIPOS_ORGANIZATION_TEST_CONNECTION` y `MIPOS_USERS_TEST_CONNECTION` con bases temporales vacías y distintas,
 con nombres que comiencen por `mipos_test_`.
 
 ## Documentación
