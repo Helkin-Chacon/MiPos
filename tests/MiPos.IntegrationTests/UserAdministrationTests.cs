@@ -59,7 +59,7 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
         using var employeeClient = api.CreateClient();
         await AuthorizeAsync(client, owner.Username, password);
 
-        Assert.Equal(owner.Id, Assert.Single(await ListUsersAsync(client)).Id);
+        Assert.Empty(await ListUsersAsync(client));
         using var foreignRole = await client.PostAsJsonAsync(UsersPath, new
         {
             username = "employee", password, firstName = "Ana", lastName = "Ruiz", email = "ana@example.com",
@@ -79,8 +79,7 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
         Assert.True(employee.IsActive);
         var employeePath = $"{UsersPath}/{employee.Id}";
         await AuthorizeAsync(employeeClient, "EMPLOYEE", password);
-        Assert.Equal(new[] { owner.Id, employee.Id }.Order(),
-            (await ListUsersAsync(employeeClient)).Select(user => user.Id).Order());
+        Assert.Equal(employee.Id, Assert.Single(await ListUsersAsync(employeeClient)).Id);
 
         using var duplicate = await client.PostAsJsonAsync(UsersPath, new
         {
@@ -88,7 +87,7 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
             email = "ana@example.com", roleId = cashierRole.Id
         });
         await ErrorHandlingTests.AssertApiError(duplicate, 409);
-        Assert.Equal(new[] { owner.Id, employee.Id }.Order(), (await ListUsersAsync(client)).Select(user => user.Id).Order());
+        Assert.Equal(employee.Id, Assert.Single(await ListUsersAsync(client)).Id);
 
         var profile = new
         {
@@ -112,13 +111,13 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
 
         using var updated = await client.PutAsJsonAsync(employeePath, profile);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
-        var updatedEmployee = Assert.Single(await ListUsersAsync(client), user => user.Id == employee.Id);
+        Assert.Empty(await ListUsersAsync(client));
+        var updatedEmployee = await database.Users.AsNoTracking().SingleAsync(user => user.Id == employee.Id);
         Assert.Equal("supervisor", updatedEmployee.Username);
         Assert.Equal("María", updatedEmployee.FirstName);
         Assert.Equal("López", updatedEmployee.LastName);
         Assert.Equal("maria@example.com", updatedEmployee.Email);
         Assert.Equal(owner.RoleId, updatedEmployee.RoleId);
-        Assert.Equal(RoleCodes.Administrator, updatedEmployee.RoleCode);
         Assert.True(updatedEmployee.IsActive);
         await AuthorizeAsync(employeeClient, updatedEmployee.Username, password);
 
@@ -128,15 +127,15 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
         await ErrorHandlingTests.AssertApiError(missingStatus, 400);
         using var deactivated = await client.PatchAsJsonAsync(employeePath + "/status", new { isActive = false });
         Assert.Equal(HttpStatusCode.OK, deactivated.StatusCode);
-        Assert.False(Assert.Single(await ListUsersAsync(client), user => user.Id == employee.Id).IsActive);
-        Assert.False(Assert.Single(await ListUsersAsync(employeeClient), user => user.Id == employee.Id).IsActive);
+        Assert.False(await database.Users.Where(user => user.Id == employee.Id).Select(user => user.IsActive).SingleAsync());
+        Assert.Empty(await ListUsersAsync(employeeClient));
         using var disabledLogin = await employeeClient.PostAsJsonAsync("/api/v1/auth/login",
             new { username = updatedEmployee.Username, password });
         await ErrorHandlingTests.AssertApiError(disabledLogin, 401);
 
         using var activated = await client.PatchAsJsonAsync(employeePath + "/status", new { isActive = true });
         Assert.Equal(HttpStatusCode.OK, activated.StatusCode);
-        Assert.True(Assert.Single(await ListUsersAsync(client), user => user.Id == employee.Id).IsActive);
+        Assert.True(await database.Users.Where(user => user.Id == employee.Id).Select(user => user.IsActive).SingleAsync());
         await AuthorizeAsync(employeeClient, updatedEmployee.Username, password);
 
         var demotions = await Task.WhenAll(
@@ -153,9 +152,8 @@ public class UserAdministrationTests(MiPosApiFactory factory) : IClassFixture<Mi
         using var employeeDemotion = demotions[1];
         Assert.Single(demotions, response => response.StatusCode == HttpStatusCode.OK);
         Assert.Single(demotions, response => response.StatusCode == HttpStatusCode.Conflict);
-        var remainingAdministrator = ownerDemotion.IsSuccessStatusCode ? employeeClient : client;
-        Assert.Single(await ListUsersAsync(remainingAdministrator), user =>
-            user.IsActive && user.RoleCode == RoleCodes.Administrator);
+        Assert.Equal(1, await database.Users.CountAsync(user =>
+            user.BusinessId == owner.BusinessId && user.IsActive && user.RoleId == owner.RoleId));
     }
 
     private static async Task<User> AddBusinessAsync(MiPosDbContext database, string code, string password)

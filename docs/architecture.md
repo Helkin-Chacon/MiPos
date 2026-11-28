@@ -292,9 +292,9 @@ administrator roles. Deploy catalog migrations with the API stopped so
 business creation reads the complete updated catalog.
 
 Role assignments reference `(role_id, business_id)` to enforce tenant
-isolation. Future role editing use cases must update `updated_at` and
-increment `version` when changing a role or its assignments, saving the
-changes together so EF Core can detect concurrent edits.
+isolation. Permission updates set `updated_at` and increment `version`
+before replacing assignments in the same transaction. EF Core checks the
+role version to detect concurrent edits.
 
 ### Local authentication
 

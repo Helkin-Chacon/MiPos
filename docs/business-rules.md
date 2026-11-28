@@ -90,7 +90,7 @@ start with two roles:
 - `ADMINISTRATOR` (Administrador) is reserved and retains access to the entire
   catalog, including permissions added in future migrations.
 - `CASHIER` (Cajero) starts with `POS_SELL` and `CASH_REGISTER_OPEN_CLOSE`.
-  Each business may customize its cashier role when role management is available.
+  Each business can customize the permissions assigned to its cashier role.
 
 | Permission | Scope |
 |---|---|
@@ -109,9 +109,9 @@ The API currently requires a valid JWT for protected endpoints. When
 permission-based authorization is implemented, access to the administration
 panel will require `ADMIN_ACCESS` and each administrative module will also
 require its own permission. Branch settings such as table management,
-inventory and operation mode apply independently of permissions. When role
-management is implemented, it must protect the reserved administrator role
-and its complete set of assignments.
+inventory and operation mode apply independently of permissions. Role
+permission updates protect the reserved administrator role and its complete
+set of assignments.
 
 User management currently requires a valid JWT and is scoped to the authenticated
 business. The assigned role must be active and belong to that business. Users

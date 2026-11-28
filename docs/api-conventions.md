@@ -331,6 +331,24 @@ An inaccessible user returns 404. An invalid role or self-deactivation returns
 422. A duplicate username or an operation that would remove the last active
 administrator returns 409.
 
+### Roles and permissions
+
+Each endpoint requires a valid JWT. Role operations are scoped to the
+authenticated business.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /api/v1/permissions` | | 200 with the global catalog |
+| `GET /api/v1/roles` | | 200 with the business roles and assigned permissions |
+| `PUT /api/v1/roles/{roleId}/permissions` | `permissionIds` | 200 with `data: true` |
+
+Each permission includes `id`, `code`, `name`, and `description`. Each role
+includes `id`, `code`, `name`, `isActive`, and `permissions`.
+The PUT request replaces the full set of assignments. An empty list clears
+the assignments. An inaccessible role returns 404. Unknown or duplicate
+permissions and changes to the `ADMINISTRATOR` role return 422. Concurrent
+edits can return 409.
+
 ## 13. Concurrency and Transactional Operations
 
 Critical operations must handle concurrent requests safely.
