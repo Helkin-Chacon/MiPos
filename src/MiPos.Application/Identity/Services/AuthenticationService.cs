@@ -10,22 +10,21 @@ namespace MiPos.Application.Identity.Services;
 
 public class AuthenticationService(IMiPosDbContext dbContext, IPasswordHasher<User> hasher) : IAuthenticationService
 {
-    public async Task<AuthenticatedUser?> AuthenticateAsync(string businessCode, LoginRequest request,
+    public async Task<AuthenticatedUser?> AuthenticateAsync(LoginRequest request,
         CancellationToken cancellationToken)
     {
-        var businessId = await dbContext.Businesses
-            .Where(business => business.Code == businessCode && business.IsActive && business.DeletedAt == null)
-            .Select(business => (Guid?)business.Id).SingleOrDefaultAsync(cancellationToken);
-        if (businessId is null)
+        var username = User.NormalizeUsername(request.Username);
+        var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(user =>
+            user.NormalizedUsername == username && user.IsActive && user.DeletedAt == null,
+            cancellationToken);
+        if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
         {
             return null;
         }
 
-        var username = User.NormalizeUsername(request.Username);
-        var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(user =>
-            user.BusinessId == businessId && user.NormalizedUsername == username && user.IsActive && user.DeletedAt == null,
-            cancellationToken);
-        if (user is null || hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
+        var businessIsActive = await dbContext.Businesses.AnyAsync(business =>
+            business.Id == user.BusinessId && business.IsActive && business.DeletedAt == null, cancellationToken);
+        if (!businessIsActive)
         {
             return null;
         }

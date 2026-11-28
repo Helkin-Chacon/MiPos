@@ -155,8 +155,9 @@ Table users {
   role_id uuid [not null]
   username varchar [not null]
   normalized_username varchar [not null]
-  name varchar [not null]
-  email varchar
+  first_name varchar [not null]
+  last_name varchar [note: 'Required for new accounts; legacy full names are retained in first_name']
+  email varchar [not null]
   password_hash varchar [not null]
   is_active boolean [not null, default: true]
   created_at timestamptz [not null, default: `now()`]
@@ -166,7 +167,7 @@ Table users {
 
   indexes {
     (id, business_id) [unique]
-    (business_id, normalized_username) [unique]
+    normalized_username [unique]
   }
 }
 

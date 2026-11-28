@@ -17,8 +17,7 @@ public class MiPosApiFactory : WebApplicationFactory<Program>
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Jwt:SigningKey"] = key,
-            ["Installation:BusinessCode"] = "market"
+            ["Jwt:SigningKey"] = key
         }));
     }
 

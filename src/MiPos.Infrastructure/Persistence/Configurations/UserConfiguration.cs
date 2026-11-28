@@ -7,19 +7,22 @@ namespace MiPos.Infrastructure.Persistence.Configurations;
 
 internal class UserConfiguration : IEntityTypeConfiguration<User>
 {
+    internal const string UsernameIndexName = "ux_users_normalized_username";
+
     public void Configure(EntityTypeBuilder<User> builder)
     {
         builder.ToTable("users");
         builder.HasKey(user => user.Id);
         builder.HasIndex(user => new { user.Id, user.BusinessId }).IsUnique();
-        builder.HasIndex(user => new { user.BusinessId, user.NormalizedUsername }).IsUnique();
+        builder.HasIndex(user => user.NormalizedUsername).IsUnique().HasDatabaseName(UsernameIndexName);
 
         builder.Property(user => user.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(user => user.BusinessId).HasColumnName("business_id");
         builder.Property(user => user.RoleId).HasColumnName("role_id");
         builder.Property(user => user.Username).HasColumnName("username").HasColumnType("varchar");
         builder.Property(user => user.NormalizedUsername).HasColumnName("normalized_username").HasColumnType("varchar");
-        builder.Property(user => user.Name).HasColumnName("name").HasColumnType("varchar");
+        builder.Property(user => user.FirstName).HasColumnName("first_name").HasColumnType("varchar");
+        builder.Property(user => user.LastName).HasColumnName("last_name").HasColumnType("varchar");
         builder.Property(user => user.Email).HasColumnName("email").HasColumnType("varchar");
         builder.Property(user => user.PasswordHash).HasColumnName("password_hash").HasColumnType("varchar");
         builder.Property(user => user.IsActive).HasColumnName("is_active").HasDefaultValue(true);

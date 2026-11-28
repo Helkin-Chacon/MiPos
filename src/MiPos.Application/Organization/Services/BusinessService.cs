@@ -26,6 +26,12 @@ public class BusinessService(IMiPosDbContext dbContext, IPasswordHasher<User> pa
     {
         ValidateTimeZone(request.TimeZone);
 
+        var normalizedUsername = User.NormalizeUsername(request.Administrator.Username);
+        if (await dbContext.Users.AnyAsync(user => user.NormalizedUsername == normalizedUsername, cancellationToken))
+        {
+            throw new ConflictException("Usuario duplicado", "Ese nombre de usuario ya está en uso.");
+        }
+
         var now = DateTime.UtcNow;
         var business = new Business
         {
@@ -51,8 +57,10 @@ public class BusinessService(IMiPosDbContext dbContext, IPasswordHasher<User> pa
             BusinessId = business.Id,
             RoleId = administratorRole.Id,
             Username = request.Administrator.Username.Trim(),
-            NormalizedUsername = User.NormalizeUsername(request.Administrator.Username),
-            Name = request.Administrator.Name.Trim(),
+            NormalizedUsername = normalizedUsername,
+            FirstName = request.Administrator.FirstName.Trim(),
+            LastName = request.Administrator.LastName.Trim(),
+            Email = request.Administrator.Email.Trim(),
             PasswordHash = string.Empty,
             CreatedAt = now,
             UpdatedAt = now

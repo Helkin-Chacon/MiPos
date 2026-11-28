@@ -9,7 +9,7 @@ namespace MiPos.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-public class AuthController(IAuthenticationService authentication, IConfiguration configuration, JwtTokenGenerator tokens)
+public class AuthController(IAuthenticationService authentication, JwtTokenGenerator tokens)
     : ControllerBase
 {
     [AllowAnonymous]
@@ -17,13 +17,7 @@ public class AuthController(IAuthenticationService authentication, IConfiguratio
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var businessCode = configuration["Installation:BusinessCode"]?.Trim();
-        if (string.IsNullOrEmpty(businessCode))
-        {
-            throw new InvalidOperationException("Configure Installation:BusinessCode for this installation.");
-        }
-
-        var user = await authentication.AuthenticateAsync(businessCode, request, cancellationToken);
+        var user = await authentication.AuthenticateAsync(request, cancellationToken);
         if (user is null)
         {
             return Unauthorized(new ApiResponse<LoginResponse>

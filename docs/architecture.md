@@ -298,10 +298,10 @@ changes together so EF Core can detect concurrent edits.
 
 ### Local authentication
 
-Login resolves the business from `Installation:BusinessCode` and checks the
+Login looks up the globally unique normalized username and checks the
 password hash in `users` with `PasswordHasher<User>`. ASP.NET Core validates
 the signed JWT on subsequent requests. The token carries the user, business,
-role, and permission codes. `IRequestContext` exposes these claims to the
+role, and permission codes. The business is taken from the user account. `IRequestContext` exposes these claims to the
 application without a database query on each request.
 
 ## 11. Transactional Consistency

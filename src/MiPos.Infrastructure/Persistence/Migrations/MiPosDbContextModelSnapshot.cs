@@ -219,8 +219,14 @@ namespace MiPos.Infrastructure.Persistence.Migrations
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Email")
+                        .IsRequired()
                         .HasColumnType("varchar")
                         .HasColumnName("email");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("varchar")
+                        .HasColumnName("first_name");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -228,10 +234,9 @@ namespace MiPos.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
+                    b.Property<string>("LastName")
                         .HasColumnType("varchar")
-                        .HasColumnName("name");
+                        .HasColumnName("last_name");
 
                     b.Property<string>("NormalizedUsername")
                         .IsRequired()
@@ -267,8 +272,9 @@ namespace MiPos.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BusinessId", "NormalizedUsername")
-                        .IsUnique();
+                    b.HasIndex("NormalizedUsername")
+                        .IsUnique()
+                        .HasDatabaseName("ux_users_normalized_username");
 
                     b.HasIndex("Id", "BusinessId")
                         .IsUnique();

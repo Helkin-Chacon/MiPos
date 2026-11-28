@@ -43,6 +43,8 @@ public class MiPosDbContext(DbContextOptions<MiPosDbContext> options)
         {
             switch (error.ConstraintName)
             {
+                case UserConfiguration.UsernameIndexName:
+                    throw new ConflictException("Usuario duplicado", "Ese nombre de usuario ya está en uso.");
                 case BusinessConfiguration.CodeIndexName:
                     throw new ConflictException("Código de negocio duplicado", "Ya existe un negocio con ese código.");
                 case BranchConfiguration.CodeIndexName:

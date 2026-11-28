@@ -294,7 +294,8 @@ Authorization must be enforced by the backend.
   or authentication secrets.
 
 POST `/api/v1/auth/login` accepts `username` and `password` over HTTPS.
-The server resolves the business through `Installation:BusinessCode`.
+The server looks up the globally unique username and uses the business
+associated with that account.
 Success returns `data.accessToken` in the standard envelope. Invalid
 credentials return a generic 401.
 
@@ -303,6 +304,14 @@ The default lifetime is 12 hours. The token carries the role and permissions
 at issuance, and those claims apply until it expires. Business routes
 check ownership using the authenticated business claim. Access to protected
 endpoints requires a valid JWT. Role and permission enforcement is deferred.
+
+Authenticated users can read their current profile with `GET /api/v1/users/me`.
+Send `username`, `firstName`, `lastName`, and `email` together to update
+the profile with `PUT /api/v1/users/me`. All four fields are required.
+Use `PUT /api/v1/users/me/password` for `currentPassword` and `newPassword`.
+Successful updates return `data: true`. A duplicate username returns 409
+and an incorrect current password returns 422. Existing JWTs remain valid until
+their original expiration after a password change.
 
 ## 13. Concurrency and Transactional Operations
 

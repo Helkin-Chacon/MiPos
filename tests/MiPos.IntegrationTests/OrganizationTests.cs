@@ -1,9 +1,7 @@
-using System.Security.Cryptography;
-using Microsoft.AspNetCore.Identity;
-using MiPos.Domain.Constants.Identity;
-using MiPos.Domain.Entities.Identity;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -12,6 +10,8 @@ using Microsoft.Extensions.Configuration;
 using MiPos.Api.Responses;
 using MiPos.Application.Organization.Requests;
 using MiPos.Application.Organization.Responses;
+using MiPos.Domain.Constants.Identity;
+using MiPos.Domain.Entities.Identity;
 using MiPos.Domain.Enums.Typologies;
 using MiPos.Infrastructure.Persistence;
 using Npgsql;
@@ -35,6 +35,11 @@ public sealed class OrganizationTests(MiPosApiFactory factory)
         missingAdministrator.Administrator = null!;
         using var missingAdministratorResponse = await client.PostAsJsonAsync(BusinessesPath, missingAdministrator);
         await ErrorHandlingTests.AssertApiError(missingAdministratorResponse, 400);
+
+        var invalidEmail = NewBusiness();
+        invalidEmail.Administrator.Email = "invalid-email";
+        using var invalidEmailResponse = await client.PostAsJsonAsync(BusinessesPath, invalidEmail);
+        await ErrorHandlingTests.AssertApiError(invalidEmailResponse, 400);
 
         using var missingName = await client.PostAsJsonAsync($"{BusinessesPath}/{Guid.NewGuid()}/branches", new { code = "main" });
         await ErrorHandlingTests.AssertApiError(missingName, 400);
@@ -96,8 +101,10 @@ public sealed class OrganizationTests(MiPosApiFactory factory)
         var administratorRole = await setup.Roles.SingleAsync(role => role.Id == administrator.RoleId);
         Assert.Equal(RoleCodes.Administrator, administratorRole.Code);
         Assert.Equal(business.Id, administratorRole.BusinessId);
-        Assert.Equal("ADMIN", administrator.NormalizedUsername);
-        Assert.Equal(request.Administrator.Name, administrator.Name);
+        Assert.Equal("ADMIN@MARKET", administrator.NormalizedUsername);
+        Assert.Equal(request.Administrator.FirstName, administrator.FirstName);
+        Assert.Equal(request.Administrator.LastName, administrator.LastName);
+        Assert.Equal(request.Administrator.Email, administrator.Email);
         Assert.NotEqual(request.Administrator.Password, administrator.PasswordHash);
         Assert.Equal(PasswordVerificationResult.Success,
             new PasswordHasher<User>().VerifyHashedPassword(administrator, administrator.PasswordHash, request.Administrator.Password));
@@ -105,8 +112,15 @@ public sealed class OrganizationTests(MiPosApiFactory factory)
         Assert.Equal(1, business.Version);
         Assert.Equal(DateTimeKind.Utc, business.CreatedAt.Kind);
         Assert.Equal(business.CreatedAt, business.UpdatedAt);
-        using var duplicateBusiness = await client.PostAsJsonAsync(BusinessesPath, NewBusiness());
+        var duplicateCode = NewBusiness();
+        duplicateCode.Administrator.Username = "another-admin";
+        using var duplicateBusiness = await client.PostAsJsonAsync(BusinessesPath, duplicateCode);
         await ErrorHandlingTests.AssertApiError(duplicateBusiness, 409);
+        var duplicateUsername = NewBusiness(code: "duplicate-username");
+        duplicateUsername.Administrator.Username = "  ADMIN@MARKET  ";
+        using var duplicateAdministrator = await client.PostAsJsonAsync(BusinessesPath, duplicateUsername);
+        var duplicateError = await ErrorHandlingTests.AssertApiError(duplicateAdministrator, 409);
+        Assert.Equal("Usuario duplicado", duplicateError.GetProperty("title").GetString());
         Assert.Equal(1, await setup.Businesses.CountAsync());
         Assert.Equal(2, await setup.Roles.CountAsync());
         Assert.Equal(1, await setup.Users.CountAsync());
@@ -142,6 +156,11 @@ public sealed class OrganizationTests(MiPosApiFactory factory)
         await ErrorHandlingTests.AssertApiError(inactiveMode, 422);
 
         var other = await CreateAsync<BusinessResponse>(client, BusinessesPath, NewBusiness(code: "other"), BusinessesPath, api);
+        var duplicateAtDatabase = await Assert.ThrowsAsync<PostgresException>(() =>
+            setup.Users.Where(user => user.BusinessId == other.Id).ExecuteUpdateAsync(setters =>
+                setters.SetProperty(user => user.NormalizedUsername, administrator.NormalizedUsername)));
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, duplicateAtDatabase.SqlState);
+
         var explicitTimeZone = await CreateAsync<BranchResponse>(client, $"{BusinessesPath}/{other.Id}/branches",
             NewBranch(timeZone: "UTC"), branchDetailsPath);
         Assert.Equal("UTC", explicitTimeZone.TimeZone);
@@ -171,7 +190,7 @@ public sealed class OrganizationTests(MiPosApiFactory factory)
             IsActive = isActive,
             Administrator = new InitialAdministratorRequest
             {
-                Username = "admin", Name = "Administrador",
+                Username = $"admin@{code}", FirstName = "Ana", LastName = "Gómez", Email = $"admin-{code}@example.com",
                 Password = Convert.ToHexString(RandomNumberGenerator.GetBytes(20))
             }
         };

@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Identity;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -70,7 +70,7 @@ public class RolesAndPermissionsTests
             CountryCode = "CO", CurrencyCode = "COP", TimeZone = "America/Bogota",
             Administrator = new InitialAdministratorRequest
             {
-                Username = "admin", Name = "Administrador",
+                Username = "admin", FirstName = "Ana", LastName = "Gómez", Email = "admin@example.com",
                 Password = Convert.ToHexString(RandomNumberGenerator.GetBytes(20))
             }
         }, CancellationToken.None);
