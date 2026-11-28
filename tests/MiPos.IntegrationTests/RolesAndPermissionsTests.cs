@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Identity;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -61,11 +63,16 @@ public class RolesAndPermissionsTests
         await migrator.MigrateAsync();
         await migrator.MigrateAsync();
 
-        var service = new BusinessService(context);
+        var service = new BusinessService(context, new PasswordHasher<User>());
         var created = await service.CreateBusinessAsync(new CreateBusinessRequest
         {
             Code = "new", Name = "Negocio nuevo",
-            CountryCode = "CO", CurrencyCode = "COP", TimeZone = "America/Bogota"
+            CountryCode = "CO", CurrencyCode = "COP", TimeZone = "America/Bogota",
+            Administrator = new InitialAdministratorRequest
+            {
+                Username = "admin", Name = "Administrador",
+                Password = Convert.ToHexString(RandomNumberGenerator.GetBytes(20))
+            }
         }, CancellationToken.None);
 
         var permissions = await context.Permissions.ToDictionaryAsync(permission => permission.Code);

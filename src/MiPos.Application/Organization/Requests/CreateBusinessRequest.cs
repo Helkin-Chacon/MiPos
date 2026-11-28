@@ -17,4 +17,7 @@ public class CreateBusinessRequest
     public string? LegalName { get; set; }
     public string? TaxIdentification { get; set; }
     public bool IsActive { get; set; } = true;
+
+    [Required]
+    public InitialAdministratorRequest Administrator { get; set; } = null!;
 }

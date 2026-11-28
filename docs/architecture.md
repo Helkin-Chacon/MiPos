@@ -296,6 +296,14 @@ isolation. Future role editing use cases must update `updated_at` and
 increment `version` when changing a role or its assignments, saving the
 changes together so EF Core can detect concurrent edits.
 
+### Local authentication
+
+Login resolves the business from `Installation:BusinessCode` and checks the
+password hash in `users` with `PasswordHasher<User>`. ASP.NET Core validates
+the signed JWT on subsequent requests. The token carries the user, business,
+role, and permission codes. `IRequestContext` exposes these claims to the
+application without a database query on each request.
+
 ## 11. Transactional Consistency
 
 Critical operations include:

@@ -286,7 +286,6 @@ internet access.
 
 Authorization must be enforced by the backend.
 
-- Use permission-based authorization.
 - Validate business ownership.
 - Validate branch access where applicable.
 - Do not trust client-supplied user or business identifiers
@@ -294,9 +293,16 @@ Authorization must be enforced by the backend.
 - Do not expose passwords, password hashes, tokens,
   or authentication secrets.
 
-The specific authentication mechanism, session lifetime,
-token strategy, and credential storage implementation
-will be defined before implementing the Identity module.
+POST `/api/v1/auth/login` accepts `username` and `password` over HTTPS.
+The server resolves the business through `Installation:BusinessCode`.
+Success returns `data.accessToken` in the standard envelope. Invalid
+credentials return a generic 401.
+
+Send the JWT in `Authorization: Bearer <accessToken>` on protected requests.
+The default lifetime is 12 hours. The token carries the role and permissions
+at issuance, and those claims apply until it expires. Business routes
+check ownership using the authenticated business claim. Access to protected
+endpoints requires a valid JWT. Role and permission enforcement is deferred.
 
 ## 13. Concurrency and Transactional Operations
 

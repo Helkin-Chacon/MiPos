@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiPos.Api.Errors;
+using MiPos.Api.Identity;
 using MiPos.Api.Responses;
 using MiPos.Application.Common.Interfaces;
 using MiPos.Application.Organization.Interfaces;
@@ -29,6 +30,7 @@ builder.Services.AddControllers()
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
+builder.Services.AddMiPosAuthentication(builder.Configuration);
 builder.Services.AddScoped<ITypologyService, TypologyService>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
@@ -72,6 +74,9 @@ app.UseStatusCodePages(async context =>
     var error = ApiError.FromRequest(httpContext, title, message);
     await httpContext.Response.WriteAsJsonAsync(new ApiResponse<object> { Error = error }, httpContext.RequestAborted);
 });
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {

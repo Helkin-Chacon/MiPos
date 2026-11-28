@@ -23,10 +23,10 @@ public class BranchService(IMiPosDbContext dbContext) : IBranchService
         return branches.ConvertAll(ToResponse);
     }
 
-    public async Task<BranchResponse> GetBranchByIdAsync(Guid branchId, CancellationToken cancellationToken)
+    public async Task<BranchResponse> GetBranchByIdAsync(Guid businessId, Guid branchId, CancellationToken cancellationToken)
     {
         var branch = await dbContext.Branches.AsNoTracking().Include(branch => branch.Business)
-            .SingleOrDefaultAsync(branch => branch.Id == branchId && branch.DeletedAt == null && branch.Business.DeletedAt == null,
+            .SingleOrDefaultAsync(branch => branch.Id == branchId && branch.BusinessId == businessId && branch.DeletedAt == null && branch.Business.DeletedAt == null,
                 cancellationToken)
             ?? throw new NotFoundException("Establecimiento no encontrado", "No existe un establecimiento con ese identificador.");
 

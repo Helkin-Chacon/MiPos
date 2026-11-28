@@ -9,7 +9,7 @@
 // Inventory retains balances and movements; deduction timing, recipes and reservations are to be defined.
 // Closing totals by payment method are queried from payments; do not duplicate charges in cash register movements.
 // Fiscal data and credit notes are in fiscal_documents; validate Factus/DIAN rules separately.
-// Local authentication and secrets will be defined when implementing identity, as in the original model.
+// Local authentication uses the password hash stored in users.
 // Bidirectional synchronization and a SaaS platform are not implemented in this version.
 
 // ---- Typologies ----
@@ -157,11 +157,12 @@ Table users {
   normalized_username varchar [not null]
   name varchar [not null]
   email varchar
+  password_hash varchar [not null]
   is_active boolean [not null, default: true]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
-  version bigint [not null, default: 1, note: 'Password hashes and secrets are stored outside this profile']
+  version bigint [not null, default: 1]
 
   indexes {
     (id, business_id) [unique]

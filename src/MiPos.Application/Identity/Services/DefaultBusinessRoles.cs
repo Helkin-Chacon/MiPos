@@ -8,17 +8,18 @@ namespace MiPos.Application.Identity.Services;
 
 internal static class DefaultBusinessRoles
 {
-    internal static async Task AddAsync(IMiPosDbContext dbContext, Business business, CancellationToken cancellationToken)
+    internal static async Task<Role> AddAsync(IMiPosDbContext dbContext, Business business, CancellationToken cancellationToken)
     {
         var permissions = await dbContext.Permissions.AsNoTracking().ToListAsync(cancellationToken);
         var sell = permissions.Single(permission => permission.Code == PermissionCodes.PosSell);
         var openClose = permissions.Single(permission => permission.Code == PermissionCodes.CashRegisterOpenClose);
 
-        AddRole(dbContext, business, RoleCodes.Administrator, "Administrador", permissions);
+        var administrator = AddRole(dbContext, business, RoleCodes.Administrator, "Administrador", permissions);
         AddRole(dbContext, business, RoleCodes.Cashier, "Cajero", [sell, openClose]);
+        return administrator;
     }
 
-    private static void AddRole(
+    private static Role AddRole(
         IMiPosDbContext dbContext, Business business, string code, string name, IEnumerable<Permission> permissions)
     {
         var role = new Role
@@ -38,5 +39,6 @@ internal static class DefaultBusinessRoles
             RoleId = role.Id,
             PermissionId = permission.Id
         }));
+        return role;
     }
 }

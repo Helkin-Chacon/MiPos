@@ -105,9 +105,10 @@ start with two roles:
 | `SANITATION_ACCESS` | Módulo de sanidad |
 | `BILLING_ACCESS` | Facturación electrónica |
 
-Issue #5 will enforce authorization in the backend. Access to the
-administration panel requires `ADMIN_ACCESS`. Each administrative module
-also requires its own permission. Branch settings such as table management,
+The API currently requires a valid JWT for protected endpoints. When
+permission-based authorization is implemented, access to the administration
+panel will require `ADMIN_ACCESS` and each administrative module will also
+require its own permission. Branch settings such as table management,
 inventory and operation mode apply independently of permissions. When role
 management is implemented, it must protect the reserved administrator role
 and its complete set of assignments.

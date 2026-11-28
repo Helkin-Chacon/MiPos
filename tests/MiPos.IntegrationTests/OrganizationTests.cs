@@ -1,3 +1,7 @@
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Identity;
+using MiPos.Domain.Constants.Identity;
+using MiPos.Domain.Entities.Identity;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,8 +18,8 @@ using Npgsql;
 
 namespace MiPos.IntegrationTests;
 
-public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class OrganizationTests(MiPosApiFactory factory)
+    : IClassFixture<MiPosApiFactory>
 {
     private const string TestConnectionVariable = "MIPOS_ORGANIZATION_TEST_CONNECTION";
     private const string BusinessesPath = "/api/v1/businesses";
@@ -23,9 +27,14 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
     [Fact]
     public async Task InvalidRequestsKeepTheValidationEnvelope()
     {
-        using var client = factory.CreateClient();
+        using var client = MiPosApiFactory.CreateAuthenticatedClient(factory);
         using var invalidCountry = await client.PostAsJsonAsync(BusinessesPath, NewBusiness(countryCode: "COL"));
         await ErrorHandlingTests.AssertApiError(invalidCountry, 400);
+
+        var missingAdministrator = NewBusiness();
+        missingAdministrator.Administrator = null!;
+        using var missingAdministratorResponse = await client.PostAsJsonAsync(BusinessesPath, missingAdministrator);
+        await ErrorHandlingTests.AssertApiError(missingAdministratorResponse, 400);
 
         using var missingName = await client.PostAsJsonAsync($"{BusinessesPath}/{Guid.NewGuid()}/branches", new { code = "main" });
         await ErrorHandlingTests.AssertApiError(missingName, 400);
@@ -37,7 +46,7 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
     [InlineData("PUT", "/api/v1/branches/00000000-0000-0000-0000-000000000001")]
     public async Task UnneededAdministrationMethodsAreUnavailable(string method, string path)
     {
-        using var client = factory.CreateClient();
+        using var client = MiPosApiFactory.CreateAuthenticatedClient(factory);
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
         using var response = await client.SendAsync(request);
         await ErrorHandlingTests.AssertApiError(response, 405);
@@ -79,24 +88,38 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
 
         using var api = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = connection })));
-        using var client = api.CreateClient();
+        using var client = MiPosApiFactory.CreateAuthenticatedClient(api);
 
-        var business = await CreateAsync<BusinessResponse>(client, BusinessesPath, NewBusiness(), BusinessesPath);
+        var request = NewBusiness();
+        var business = await CreateAsync<BusinessResponse>(client, BusinessesPath, request, BusinessesPath, api);
+        var administrator = await setup.Users.SingleAsync(user => user.BusinessId == business.Id);
+        var administratorRole = await setup.Roles.SingleAsync(role => role.Id == administrator.RoleId);
+        Assert.Equal(RoleCodes.Administrator, administratorRole.Code);
+        Assert.Equal(business.Id, administratorRole.BusinessId);
+        Assert.Equal("ADMIN", administrator.NormalizedUsername);
+        Assert.Equal(request.Administrator.Name, administrator.Name);
+        Assert.NotEqual(request.Administrator.Password, administrator.PasswordHash);
+        Assert.Equal(PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(administrator, administrator.PasswordHash, request.Administrator.Password));
         Assert.True(business.IsActive);
         Assert.Equal(1, business.Version);
         Assert.Equal(DateTimeKind.Utc, business.CreatedAt.Kind);
         Assert.Equal(business.CreatedAt, business.UpdatedAt);
         using var duplicateBusiness = await client.PostAsJsonAsync(BusinessesPath, NewBusiness());
         await ErrorHandlingTests.AssertApiError(duplicateBusiness, 409);
+        Assert.Equal(1, await setup.Businesses.CountAsync());
+        Assert.Equal(2, await setup.Roles.CountAsync());
+        Assert.Equal(1, await setup.Users.CountAsync());
 
         var inactive = await CreateAsync<BusinessResponse>(client, BusinessesPath,
-            NewBusiness(code: "inactive", isActive: false), BusinessesPath);
+            NewBusiness(code: "inactive", isActive: false), BusinessesPath, api);
         Assert.False(inactive.IsActive);
         using var inactiveBranch = await client.PostAsJsonAsync($"{BusinessesPath}/{inactive.Id}/branches", NewBranch());
         await ErrorHandlingTests.AssertApiError(inactiveBranch, 409);
         using var missingBusiness = await client.PostAsJsonAsync($"{BusinessesPath}/{Guid.NewGuid()}/branches", NewBranch());
         await ErrorHandlingTests.AssertApiError(missingBusiness, 404);
 
+        MiPosApiFactory.Authorize(api, client, business.Id);
         var branchesPath = $"{BusinessesPath}/{business.Id}/branches";
         const string branchDetailsPath = "/api/v1/branches";
         var branch = await CreateAsync<BranchResponse>(client, branchesPath, NewBranch(), branchDetailsPath);
@@ -118,10 +141,13 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
             NewBranch(operationModeId: (int)OperationMode.CashRegisterAndWaiters));
         await ErrorHandlingTests.AssertApiError(inactiveMode, 422);
 
-        var other = await CreateAsync<BusinessResponse>(client, BusinessesPath, NewBusiness(code: "other"), BusinessesPath);
+        var other = await CreateAsync<BusinessResponse>(client, BusinessesPath, NewBusiness(code: "other"), BusinessesPath, api);
         var explicitTimeZone = await CreateAsync<BranchResponse>(client, $"{BusinessesPath}/{other.Id}/branches",
             NewBranch(timeZone: "UTC"), branchDetailsPath);
         Assert.Equal("UTC", explicitTimeZone.TimeZone);
+        MiPosApiFactory.Authorize(api, client, business.Id);
+        using var foreignBranch = await client.GetAsync($"{branchDetailsPath}/{explicitTimeZone.Id}");
+        await ErrorHandlingTests.AssertApiError(foreignBranch, 404);
         var branches = await client.GetFromJsonAsync<ApiResponse<List<BranchResponse>>>(branchesPath);
         Assert.Equal(branch.Id, Assert.Single(branches!.Data!).Id);
 
@@ -142,7 +168,12 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
             CountryCode = countryCode,
             CurrencyCode = "COP",
             TimeZone = "America/Bogota",
-            IsActive = isActive
+            IsActive = isActive,
+            Administrator = new InitialAdministratorRequest
+            {
+                Username = "admin", Name = "Administrador",
+                Password = Convert.ToHexString(RandomNumberGenerator.GetBytes(20))
+            }
         };
 
     private static CreateBranchRequest NewBranch(int? operationModeId = null, string? timeZone = null) =>
@@ -154,12 +185,18 @@ public sealed class OrganizationTests(WebApplicationFactory<Program> factory)
             TimeZone = timeZone
         };
 
-    private static async Task<T> CreateAsync<T>(HttpClient client, string path, object request, string detailsPath)
+    private static async Task<T> CreateAsync<T>(HttpClient client, string path, object request, string detailsPath,
+        WebApplicationFactory<Program>? api = null)
     {
         using var response = await client.PostAsJsonAsync(path, request);
         var data = await ReadAsync<T>(response, HttpStatusCode.Created);
         Assert.NotNull(response.Headers.Location);
         Assert.StartsWith($"{detailsPath}/", response.Headers.Location.AbsolutePath);
+        if (api is not null && data is BusinessResponse business)
+        {
+            MiPosApiFactory.Authorize(api, client, business.Id);
+        }
+
         using var detail = await client.GetAsync(response.Headers.Location);
         await ReadAsync<T>(detail, HttpStatusCode.OK);
         return data;

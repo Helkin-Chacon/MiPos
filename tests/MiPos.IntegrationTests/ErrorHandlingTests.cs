@@ -11,8 +11,8 @@ using MiPos.Application.Common.Exceptions;
 
 namespace MiPos.IntegrationTests;
 
-public sealed class ErrorHandlingTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ErrorHandlingTests(MiPosApiFactory factory)
+    : IClassFixture<MiPosApiFactory>
 {
     [Theory]
     [InlineData("missing", 404, "Registro no encontrado", "No existe un registro con ese identificador.")]
@@ -96,9 +96,8 @@ public sealed class ErrorHandlingTests(WebApplicationFactory<Program> factory)
     }
 
     private HttpClient CreateClient() =>
-        factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
-            services.AddControllers().AddApplicationPart(typeof(ErrorProbeController).Assembly)))
-        .CreateClient();
+        MiPosApiFactory.CreateAuthenticatedClient(factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+            services.AddControllers().AddApplicationPart(typeof(ErrorProbeController).Assembly))));
 
     internal static async Task<JsonElement> AssertApiError(HttpResponseMessage response, int status)
     {
