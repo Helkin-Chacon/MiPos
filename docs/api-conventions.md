@@ -286,7 +286,6 @@ internet access.
 
 Authorization must be enforced by the backend.
 
-- Use permission-based authorization.
 - Validate business ownership.
 - Validate branch access where applicable.
 - Do not trust client-supplied user or business identifiers
@@ -294,9 +293,61 @@ Authorization must be enforced by the backend.
 - Do not expose passwords, password hashes, tokens,
   or authentication secrets.
 
-The specific authentication mechanism, session lifetime,
-token strategy, and credential storage implementation
-will be defined before implementing the Identity module.
+POST `/api/v1/auth/login` accepts `username` and `password` over HTTPS.
+The server looks up the globally unique username and uses the business
+associated with that account.
+Success returns `data.accessToken` in the standard envelope. Invalid
+credentials return a generic 401.
+
+Send the JWT in `Authorization: Bearer <accessToken>` on protected requests.
+The default lifetime is 12 hours. The token carries the role and permissions
+at issuance, and those claims apply until it expires. Business routes
+check ownership using the authenticated business claim. Access to protected
+endpoints requires a valid JWT. Role and permission enforcement is deferred.
+
+Authenticated users can read their current profile with `GET /api/v1/users/me`.
+Send `username`, `firstName`, `lastName`, and `email` together to update
+the profile with `PUT /api/v1/users/me`. All four fields are required.
+Use `PUT /api/v1/users/me/password` for `currentPassword` and `newPassword`.
+Successful updates return `data: true`. A duplicate username returns 409
+and an incorrect current password returns 422. Existing JWTs remain valid until
+their original expiration after a password change.
+
+### Business user administration
+
+These endpoints require a valid JWT. The authenticated business scopes all
+operations.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /api/v1/users` | | 200 with active and inactive users |
+| `POST /api/v1/users` | `username`, `password`, `firstName`, `lastName`, `email`, `roleId` | 201 with the created user |
+| `PUT /api/v1/users/{userId}` | `username`, `firstName`, `lastName`, `email`, `roleId` | 200 with `data: true` |
+| `PATCH /api/v1/users/{userId}/status` | `isActive` | 200 with `data: true` |
+
+All request fields shown are required. GET and POST return `id`, `username`,
+`firstName`, `lastName`, `email`, `roleId`, `roleCode`, and `isActive`.
+An inaccessible user returns 404. An invalid role or self-deactivation returns
+422. A duplicate username or an operation that would remove the last active
+administrator returns 409.
+
+### Roles and permissions
+
+Each endpoint requires a valid JWT. Role operations are scoped to the
+authenticated business.
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /api/v1/permissions` | | 200 with the global catalog |
+| `GET /api/v1/roles` | | 200 with the business roles and assigned permissions |
+| `PUT /api/v1/roles/{roleId}/permissions` | `permissionIds` | 200 with `data: true` |
+
+Each permission includes `id`, `code`, `name`, and `description`. Each role
+includes `id`, `code`, `name`, `isActive`, and `permissions`.
+The PUT request replaces the full set of assignments. An empty list clears
+the assignments. An inaccessible role returns 404. Unknown or duplicate
+permissions and changes to the `ADMINISTRATOR` role return 422. Concurrent
+edits can return 409.
 
 ## 13. Concurrency and Transactional Operations
 

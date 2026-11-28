@@ -15,8 +15,8 @@ using MiPos.Infrastructure.Persistence;
 
 namespace MiPos.IntegrationTests;
 
-public sealed class TypologyTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class TypologyTests(MiPosApiFactory factory)
+    : IClassFixture<MiPosApiFactory>
 {
     [Fact]
     public async Task OpenApiExposesReadOnlyTypologyRoutesWithGroupFilter()
@@ -57,7 +57,7 @@ public sealed class TypologyTests(WebApplicationFactory<Program> factory)
             services.RemoveAll<ITypologyService>();
             services.AddScoped<ITypologyService, TypologyProbeService>();
         }));
-        using var client = api.CreateClient();
+        using var client = MiPosApiFactory.CreateAuthenticatedClient(api);
 
         var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/typologies?groupId=6");
         var detail = await client.GetFromJsonAsync<JsonElement>("/api/v1/typologies/21");

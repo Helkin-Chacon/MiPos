@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace MiPos.IntegrationTests;
 
-public sealed class HealthTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthTests(MiPosApiFactory factory)
+    : IClassFixture<MiPosApiFactory>
 {
     [Fact]
     public async Task GetHealthReturnsHealthy()

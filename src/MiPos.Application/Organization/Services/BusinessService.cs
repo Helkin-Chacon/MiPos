@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MiPos.Application.Common.Exceptions;
 using MiPos.Application.Common.Interfaces;
@@ -5,11 +6,12 @@ using MiPos.Application.Identity.Services;
 using MiPos.Application.Organization.Interfaces;
 using MiPos.Application.Organization.Requests;
 using MiPos.Application.Organization.Responses;
+using MiPos.Domain.Entities.Identity;
 using MiPos.Domain.Entities.Organization;
 
 namespace MiPos.Application.Organization.Services;
 
-public class BusinessService(IMiPosDbContext dbContext) : IBusinessService
+public class BusinessService(IMiPosDbContext dbContext, IPasswordHasher<User> passwordHasher) : IBusinessService
 {
     public async Task<BusinessResponse> GetBusinessByIdAsync(Guid businessId, CancellationToken cancellationToken)
     {
@@ -23,6 +25,12 @@ public class BusinessService(IMiPosDbContext dbContext) : IBusinessService
     public async Task<BusinessResponse> CreateBusinessAsync(CreateBusinessRequest request, CancellationToken cancellationToken)
     {
         ValidateTimeZone(request.TimeZone);
+
+        var normalizedUsername = User.NormalizeUsername(request.Administrator.Username);
+        if (await dbContext.Users.AnyAsync(user => user.NormalizedUsername == normalizedUsername, cancellationToken))
+        {
+            throw new ConflictException("Usuario duplicado", "Ese nombre de usuario ya está en uso.");
+        }
 
         var now = DateTime.UtcNow;
         var business = new Business
@@ -41,7 +49,24 @@ public class BusinessService(IMiPosDbContext dbContext) : IBusinessService
         };
 
         dbContext.Businesses.Add(business);
-        await DefaultBusinessRoles.AddAsync(dbContext, business, cancellationToken);
+        var administratorRole = await DefaultBusinessRoles.AddAsync(dbContext, business, cancellationToken);
+
+        var administrator = new User
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = business.Id,
+            RoleId = administratorRole.Id,
+            Username = request.Administrator.Username.Trim(),
+            NormalizedUsername = normalizedUsername,
+            FirstName = request.Administrator.FirstName.Trim(),
+            LastName = request.Administrator.LastName.Trim(),
+            Email = request.Administrator.Email.Trim(),
+            PasswordHash = string.Empty,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        administrator.PasswordHash = passwordHasher.HashPassword(administrator, request.Administrator.Password);
+        dbContext.Users.Add(administrator);
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToResponse(business);
     }

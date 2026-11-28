@@ -1,5 +1,7 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using Microsoft.EntityFrameworkCore.Storage;
 using MiPos.Application.Common.Exceptions;
 using MiPos.Application.Common.Interfaces;
 using MiPos.Domain.Entities.Identity;
@@ -16,9 +18,13 @@ public class MiPosDbContext(DbContextOptions<MiPosDbContext> options)
     public DbSet<Typology> Typologies => Set<Typology>();
     public DbSet<Business> Businesses => Set<Business>();
     public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken) =>
+        Database.BeginTransactionAsync(isolationLevel, cancellationToken);
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -42,6 +48,8 @@ public class MiPosDbContext(DbContextOptions<MiPosDbContext> options)
         {
             switch (error.ConstraintName)
             {
+                case UserConfiguration.UsernameIndexName:
+                    throw new ConflictException("Usuario duplicado", "Ese nombre de usuario ya está en uso.");
                 case BusinessConfiguration.CodeIndexName:
                     throw new ConflictException("Código de negocio duplicado", "Ya existe un negocio con ese código.");
                 case BranchConfiguration.CodeIndexName:

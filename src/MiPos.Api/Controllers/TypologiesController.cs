@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MiPos.Api.Responses;
 using MiPos.Application.Typologies.Interfaces;
@@ -6,6 +7,7 @@ using MiPos.Application.Typologies.Responses;
 namespace MiPos.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/v1/typologies")]
 public class TypologiesController(
     ITypologyService service) : ControllerBase

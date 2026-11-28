@@ -81,7 +81,7 @@ dotnet restore MiPos.slnx
 
 ### Configurar la base de datos
 
-Crear una base de datos PostgreSQL y configurar la cadena de conexión mediante User Secrets, si tiene windows variable de entor
+Crea una base de datos PostgreSQL y configura la cadena de conexión mediante User Secrets en desarrollo.
 
 
 ```bash
@@ -89,6 +89,51 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<connection-strin
 ```
 
 Las credenciales y configuraciones sensibles no deben almacenarse en el repositorio.
+
+### Configurar autenticación
+
+Configura `Jwt:SigningKey` con 32 bytes aleatorios codificados en Base64, mediante
+User Secrets en desarrollo o `Jwt__SigningKey` en la instalación. Usa una
+clave distinta por instalación. Ajusta `Jwt:AccessTokenHours` si necesitas
+cambiar la vigencia predeterminada de 12 horas. `Jwt:Issuer` y `Jwt:Audience`
+configuran el emisor y la audiencia.
+
+Antes de aplicar `UpdateUserProfileAndGlobalUsername` a una base existente,
+revisa si hay usernames normalizados repetidos o correos pendientes:
+
+```sql
+SELECT normalized_username, count(*)
+FROM users
+GROUP BY normalized_username
+HAVING count(*) > 1;
+
+SELECT id, business_id, username
+FROM users
+WHERE email IS NULL OR email !~ '^[^@[:space:]]+@[^@[:space:]]+$';
+```
+
+Si alguna consulta devuelve filas, resuelve los conflictos y completa los
+correos reales antes de migrar. La migración se detiene si quedan casos
+pendientes. Conserva el nombre existente completo en `first_name` y deja
+`last_name` vacío a nivel de base de datos para esos perfiles históricos.
+
+Aplica las migraciones sobre la base que hayas configurado para la instalación:
+
+```bash
+dotnet ef database update --project src/MiPos.Infrastructure --startup-project src/MiPos.Api
+```
+
+El login requiere un negocio, un rol y un usuario activos. La creación de
+un negocio desde `POST /api/v1/businesses` requiere un JWT y el objeto
+`administrator` con `username`, `password`, `firstName`, `lastName` y
+`email`. El username es único en toda la base de datos. El servidor crea el
+usuario inicial con el rol `ADMINISTRATOR` y guarda su contraseña como hash.
+
+Con la API disponible por HTTPS, envía `POST /api/v1/auth/login` con
+`Content-Type: application/json` y el cuerpo
+`{"username":"<usuario>","password":"<contraseña>"}`. Usa el token de
+`data.accessToken` como `Authorization: Bearer <token>` para consultar, por
+ejemplo, `GET /api/v1/typologies`.
 
 ### Compilar
 
@@ -99,7 +144,7 @@ dotnet build MiPos.slnx
 ### Ejecutar la API
 
 ```bash
-dotnet run --project src/MiPos.Api
+dotnet run --project src/MiPos.Api --launch-profile https
 ```
 
 En el entorno de desarrollo están disponibles:
@@ -113,6 +158,11 @@ En el entorno de desarrollo están disponibles:
 ```bash
 dotnet test MiPos.slnx
 ```
+
+Para ejecutar las pruebas con PostgreSQL, define
+`MIPOS_IDENTITY_TEST_CONNECTION`, `MIPOS_ROLES_TEST_CONNECTION`,
+`MIPOS_ORGANIZATION_TEST_CONNECTION` y `MIPOS_USERS_TEST_CONNECTION` con bases temporales vacías y distintas,
+con nombres que comiencen por `mipos_test_`.
 
 ## Documentación
 
